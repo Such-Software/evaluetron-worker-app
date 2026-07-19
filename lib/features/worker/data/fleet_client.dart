@@ -3,10 +3,22 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../pairing/domain/node_registration.dart';
+import '../domain/runtime_adapter.dart';
+import 'dispatch_authenticator.dart';
 
 abstract interface class FleetClient {
-  Future<void> register(NodeRegistration registration);
+  Future<void> register(
+    NodeRegistration registration,
+    WorkerAdvertisement advertisement,
+  );
   Future<void> heartbeat(NodeRegistration registration);
+}
+
+class WorkerAdvertisement {
+  const WorkerAdvertisement({required this.endpoint, required this.runtime});
+
+  final Uri endpoint;
+  final RuntimeDescriptor runtime;
 }
 
 class FleetException implements Exception {
@@ -22,15 +34,22 @@ class HttpFleetClient implements FleetClient {
   final HttpClient _client;
 
   @override
-  Future<void> register(NodeRegistration registration) {
+  Future<void> register(
+    NodeRegistration registration,
+    WorkerAdvertisement advertisement,
+  ) {
     return _post(registration, '/internal/workers/register', {
       'workerId': registration.nodeName,
       'class': 'edge',
-      'generators': <String>[],
+      'generators': advertisement.runtime.generators,
+      'models': advertisement.runtime.models,
+      'methods': advertisement.runtime.methods,
       'capacity': 1,
+      'url': advertisement.endpoint.toString(),
+      'dispatchAuth': DispatchAuthenticator.scheme,
       'details': {
         'client': 'evaluetron-worker-app',
-        'runtimeReady': false,
+        'runtimeReady': advertisement.runtime.ready,
         'sessionMode': 'foreground',
       },
     });

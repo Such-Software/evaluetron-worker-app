@@ -4,6 +4,8 @@ import 'package:evaluetron_worker_app/features/pairing/data/secure_node_credenti
 import 'package:evaluetron_worker_app/features/pairing/domain/enrollment.dart';
 import 'package:evaluetron_worker_app/features/pairing/domain/node_registration.dart';
 import 'package:evaluetron_worker_app/features/worker/data/fleet_client.dart';
+import 'package:evaluetron_worker_app/features/worker/data/worker_job_server.dart';
+import 'package:evaluetron_worker_app/features/worker/domain/runtime_adapter.dart';
 import 'package:evaluetron_worker_app/features/worker/presentation/worker_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -77,6 +79,7 @@ WorkerController _controller(
     credentials: store,
     enrollmentClient: _FakeEnrollmentClient(registration),
     fleetClient: _FakeFleetClient(),
+    jobServer: _FakeWorkerServer(),
   );
 }
 
@@ -104,5 +107,26 @@ class _FakeFleetClient implements FleetClient {
   Future<void> heartbeat(NodeRegistration registration) async {}
 
   @override
-  Future<void> register(NodeRegistration registration) async {}
+  Future<void> register(
+    NodeRegistration registration,
+    WorkerAdvertisement advertisement,
+  ) async {}
+}
+
+class _FakeWorkerServer implements WorkerServer {
+  @override
+  Uri? endpoint;
+
+  @override
+  RuntimeDescriptor get runtime => RuntimeDescriptor.unavailable;
+
+  @override
+  Future<void> start(NodeRegistration registration) async {
+    endpoint = Uri.parse('http://127.0.0.1:8090');
+  }
+
+  @override
+  Future<void> stop() async {
+    endpoint = null;
+  }
 }

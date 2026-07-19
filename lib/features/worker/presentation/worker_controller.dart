@@ -7,6 +7,7 @@ import '../../pairing/data/secure_node_credential_store.dart';
 import '../../pairing/domain/enrollment.dart';
 import '../../pairing/domain/node_registration.dart';
 import '../data/fleet_client.dart';
+import '../data/worker_job_server.dart';
 import '../domain/capability_policy.dart';
 
 enum WorkerSessionStatus { stopped, starting, running, error }
@@ -16,13 +17,16 @@ class WorkerController extends ChangeNotifier {
     required NodeCredentialStore credentials,
     required EnrollmentClient enrollmentClient,
     required FleetClient fleetClient,
+    required WorkerServer jobServer,
   }) : _credentials = credentials,
        _enrollmentClient = enrollmentClient,
-       _fleetClient = fleetClient;
+       _fleetClient = fleetClient,
+       _jobServer = jobServer;
 
   final NodeCredentialStore _credentials;
   final EnrollmentClient _enrollmentClient;
   final FleetClient _fleetClient;
+  final WorkerServer _jobServer;
 
   NodeRegistration? registration;
   WorkerSessionStatus sessionStatus = WorkerSessionStatus.stopped;
@@ -88,18 +92,29 @@ class WorkerController extends ChangeNotifier {
     message = null;
     notifyListeners();
     try {
-      await _fleetClient.register(current);
+      await _jobServer.start(current);
+      final endpoint = _jobServer.endpoint;
+      if (endpoint == null) {
+        throw const FleetException('Worker job server did not start.');
+      }
+      await _fleetClient.register(
+        current,
+        WorkerAdvertisement(endpoint: endpoint, runtime: _jobServer.runtime),
+      );
       sessionStatus = WorkerSessionStatus.running;
-      message =
-          'Connected. No model runtime is installed, so this node advertises no generators.';
+      message = _jobServer.runtime.ready
+          ? 'Connected and ready to accept authenticated jobs.'
+          : 'Connected. No model runtime is installed, so this node advertises no generators.';
       _heartbeat?.cancel();
       _heartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
         _sendHeartbeat(current);
       });
     } on FleetException catch (error) {
+      await _jobServer.stop();
       sessionStatus = WorkerSessionStatus.error;
       message = error.message;
     } on Object {
+      await _jobServer.stop();
       sessionStatus = WorkerSessionStatus.error;
       message = 'Could not start the worker session.';
     }
@@ -114,6 +129,8 @@ class WorkerController extends ChangeNotifier {
       message =
           'Heartbeat failed. Stop and restart when the brain is reachable.';
       _heartbeat?.cancel();
+      _heartbeat = null;
+      await _jobServer.stop();
       notifyListeners();
     }
   }
@@ -121,6 +138,7 @@ class WorkerController extends ChangeNotifier {
   Future<void> stop() async {
     _heartbeat?.cancel();
     _heartbeat = null;
+    await _jobServer.stop();
     sessionStatus = WorkerSessionStatus.stopped;
     message = 'Worker session stopped on this device.';
     notifyListeners();
@@ -129,6 +147,7 @@ class WorkerController extends ChangeNotifier {
   @override
   void dispose() {
     _heartbeat?.cancel();
+    unawaited(_jobServer.stop());
     super.dispose();
   }
 }

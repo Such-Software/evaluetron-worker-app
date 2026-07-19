@@ -14,6 +14,8 @@ project shells exist so store and desktop work can proceed without splitting the
 - Exchanges the short-lived `eve_` enrollment once inside the app—never through Termux or a shell.
 - Stores only the returned `evn_` node credential through platform secure storage.
 - Registers the paired node and heartbeats during an explicit, visible Start/Stop session.
+- Serves a bounded private job endpoint and accepts only replay-protected, authenticated dispatches
+  from the paired brain.
 - Shows node identity, roles, connection state, distribution policy, and verified runtime capability.
 - Uses bottom navigation on phones and a navigation rail for keyboard/mouse desktop layouts.
 
@@ -88,5 +90,8 @@ Feature boundaries are deliberately small:
 - `features/worker/presentation`: lifecycle controller and adaptive Material UI.
 
 Network clients use bounded response sizes, 15-second deadlines, no redirects, and default TLS
-verification. The controller owns the foreground session and cancels its heartbeat on Stop/dispose.
-No credential is passed into widgets or displayed.
+verification. Brain-to-worker jobs use the shared `hmac-sha256-v1` protocol: method, path, timestamp,
+nonce, and exact body hash are authenticated with a key derived from the node credential. Requests
+outside the clock window, duplicate nonces, modified bodies, oversized inputs, and concurrent work
+beyond local capacity are rejected. The controller owns the foreground session and stops both the
+job listener and heartbeat on Stop/dispose. No credential is passed into widgets or displayed.
