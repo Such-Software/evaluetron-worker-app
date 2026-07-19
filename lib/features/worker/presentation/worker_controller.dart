@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../network/domain/network_enrollment.dart';
 import '../../pairing/data/enrollment_client.dart';
 import '../../pairing/data/secure_node_credential_store.dart';
 import '../../pairing/domain/enrollment.dart';
@@ -18,15 +19,18 @@ class WorkerController extends ChangeNotifier {
     required EnrollmentClient enrollmentClient,
     required FleetClient fleetClient,
     required WorkerServer jobServer,
+    ManagedNetworkEnrollmentService? networkEnrollmentService,
   }) : _credentials = credentials,
        _enrollmentClient = enrollmentClient,
        _fleetClient = fleetClient,
-       _jobServer = jobServer;
+       _jobServer = jobServer,
+       _networkEnrollmentService = networkEnrollmentService;
 
   final NodeCredentialStore _credentials;
   final EnrollmentClient _enrollmentClient;
   final FleetClient _fleetClient;
   final WorkerServer _jobServer;
+  final ManagedNetworkEnrollmentService? _networkEnrollmentService;
 
   NodeRegistration? registration;
   WorkerSessionStatus sessionStatus = WorkerSessionStatus.stopped;
@@ -55,12 +59,25 @@ class WorkerController extends ChangeNotifier {
     message = null;
     notifyListeners();
     try {
+      final networkDraft = draft.networkEnrollment;
+      if (networkDraft != null) {
+        final service = _networkEnrollmentService;
+        if (service == null) {
+          throw const NetworkEnrollmentException(
+            'Managed network support is unavailable in this build.',
+          );
+        }
+        await service.enrollAndConnect(networkDraft);
+      }
       final enrolled = await _enrollmentClient.enroll(draft);
       await _credentials.write(enrolled);
       registration = enrolled;
       message = 'Paired as ${enrolled.nodeName}.';
       return true;
     } on EnrollmentException catch (error) {
+      message = error.message;
+      return false;
+    } on NetworkEnrollmentException catch (error) {
       message = error.message;
       return false;
     } on Object {

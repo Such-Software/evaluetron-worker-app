@@ -1,13 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../network/presentation/managed_network_controller.dart';
+import '../../network/presentation/managed_network_page.dart';
 import '../../pairing/presentation/pair_node_dialog.dart';
 import '../domain/capability_policy.dart';
 import 'worker_controller.dart';
 
 class WorkerHome extends StatefulWidget {
-  const WorkerHome({required this.controller, super.key});
+  const WorkerHome({
+    required this.controller,
+    required this.networkController,
+    super.key,
+  });
 
   final WorkerController controller;
+  final ManagedNetworkController networkController;
 
   @override
   State<WorkerHome> createState() => _WorkerHomeState();
@@ -61,6 +68,11 @@ class _WorkerHomeState extends State<WorkerHome> {
                             label: Text('Node'),
                           ),
                           NavigationRailDestination(
+                            icon: Icon(Icons.vpn_lock_outlined),
+                            selectedIcon: Icon(Icons.vpn_lock),
+                            label: Text('Network'),
+                          ),
+                          NavigationRailDestination(
                             icon: Icon(Icons.view_list_outlined),
                             selectedIcon: Icon(Icons.view_list),
                             label: Text('Capabilities'),
@@ -96,6 +108,11 @@ class _WorkerHomeState extends State<WorkerHome> {
                           label: 'Node',
                         ),
                         NavigationDestination(
+                          icon: Icon(Icons.vpn_lock_outlined),
+                          selectedIcon: Icon(Icons.vpn_lock),
+                          label: 'Network',
+                        ),
+                        NavigationDestination(
                           icon: Icon(Icons.view_list_outlined),
                           selectedIcon: Icon(Icons.view_list),
                           label: 'Capabilities',
@@ -118,7 +135,8 @@ class _WorkerHomeState extends State<WorkerHome> {
 
   Widget _pageForIndex() => switch (_selectedIndex) {
     0 => _NodePage(controller: widget.controller),
-    1 => _CapabilitiesPage(controller: widget.controller),
+    1 => ManagedNetworkPage(controller: widget.networkController),
+    2 => _CapabilitiesPage(controller: widget.controller),
     _ => _SettingsPage(controller: widget.controller),
   };
 }

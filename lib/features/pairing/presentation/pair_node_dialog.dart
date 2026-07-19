@@ -52,8 +52,9 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
       final draft = _parse();
       if (draft.usesPlainHttp && !_plainHttpAccepted) {
         setState(() {
-          _error =
-              'Plain HTTP exposes the one-time enrollment token. Confirm only on a trusted private network.';
+          _error = draft.networkEnrollment == null
+              ? 'Plain HTTP exposes the one-time enrollment token. Confirm only on a trusted private network.'
+              : 'The private fleet address uses HTTP inside the managed tunnel. Confirm this private route.';
         });
         return;
       }

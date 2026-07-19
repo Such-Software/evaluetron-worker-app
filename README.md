@@ -23,12 +23,26 @@ It does **not** execute inference yet. Registration advertises an empty generato
 `runtimeReady: false`; the UI says the model adapter is not installed. A runtime adapter must not
 advertise a generator until a local health probe proves that it can execute it.
 
+## Managed private network
+
+The app has a separate Managed Network surface and Android VPN privilege boundary. Version 2 pairing
+is explicitly network-first: generate a Nebula key on-device, enroll its public key over the public
+HTTPS Brain origin, securely store the issued profile, obtain VPN consent, verify the tunnel, then
+consume the application token over the private fleet address.
+
+The pinned Nebula packet engine is not linked yet, so this build truthfully reports **Tunnel engine
+not installed**, never establishes a TUN interface, and does not consume a version 2 application
+token. Its approved future route is the single private Brain host—never a default route or DNS
+capture. See [docs/NEBULA.md](docs/NEBULA.md) for protocol, source audit, and MIT obligations.
+
 ## Enrollment contract
 
-Fleet emits:
+Fleet emits one of:
 
 ```text
 evaluetron-worker://enroll?v=1&brain=<absolute-percent-encoded-fleet-base>&token=<eve_-token>
+
+evaluetron-worker://enroll?v=2&brain=<public-https-origin>&fleet=<private-fleet-origin>&token=<eve_-token>&networkToken=<one-time-network-token>
 ```
 
 The URI is scanned or pasted inside the app, not registered as a general-purpose operating-system
@@ -85,6 +99,8 @@ Feature boundaries are deliberately small:
 
 - `features/pairing/domain`: strict pure enrollment parsing and registration value objects.
 - `features/pairing/data`: bounded HTTP exchange and secure credential-store abstraction.
+- `features/network`: managed enrollment, secret storage, one-host route policy, native tunnel
+  boundary, consent, and status.
 - `features/worker/domain`: full-node versus store-safe capability policy.
 - `features/worker/data`: fleet registration/heartbeat client.
 - `features/worker/presentation`: lifecycle controller and adaptive Material UI.

@@ -21,6 +21,33 @@ void main() {
       expect(draft.brainBaseUrl, Uri.parse('https://fleet.example.test:8082'));
       expect(draft.enrollmentToken, token);
       expect(draft.usesPlainHttp, isFalse);
+      expect(draft.networkEnrollment, isNull);
+    });
+
+    test('parses v2 as network-first then private fleet enrollment', () {
+      final uri = Uri(
+        scheme: 'evaluetron-worker',
+        host: 'enroll',
+        queryParameters: {
+          'v': '2',
+          'brain': 'https://evaluetron.example',
+          'fleet': 'http://192.168.100.1:8082',
+          'token': token,
+          'networkToken': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN123456',
+        },
+      );
+
+      final draft = EnrollmentDraft.parseUri(uri.toString());
+
+      expect(draft.brainBaseUrl, Uri.parse('http://192.168.100.1:8082'));
+      expect(
+        draft.networkEnrollment?.brainBaseUrl,
+        Uri.parse('https://evaluetron.example'),
+      );
+      expect(
+        draft.networkEnrollment?.oneTimeToken,
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN123456',
+      );
     });
 
     test('allows cleartext only on literal private or loopback addresses', () {
@@ -65,8 +92,39 @@ void main() {
       }
     });
 
+    test('requires HTTPS for v2 bootstrap and a private cleartext fleet', () {
+      EnrollmentDraft parse({required String brain, required String fleet}) {
+        return EnrollmentDraft.parseUri(
+          Uri(
+            scheme: 'evaluetron-worker',
+            host: 'enroll',
+            queryParameters: {
+              'v': '2',
+              'brain': brain,
+              'fleet': fleet,
+              'token': token,
+              'networkToken': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN123456',
+            },
+          ).toString(),
+        );
+      }
+
+      expect(
+        () => parse(
+          brain: 'http://192.168.1.10',
+          fleet: 'http://192.168.100.1:8082',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () =>
+            parse(brain: 'https://brain.example', fleet: 'http://8.8.8.8:8082'),
+        throwsFormatException,
+      );
+    });
+
     test('rejects missing or unknown protocol versions', () {
-      for (final version in ['', '2']) {
+      for (final version in ['', '3']) {
         final uri = Uri(
           scheme: 'evaluetron-worker',
           host: 'enroll',
