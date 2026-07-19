@@ -98,7 +98,7 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
               children: [
                 const Text(
                   'Paste the private enrollment link from Evaluetron Fleet. '
-                  'The app exchanges it once—there are no shell or Termux steps.',
+                  'Enrollment and credential storage complete within the app.',
                 ),
                 const SizedBox(height: 20),
                 FilledButton.tonalIcon(

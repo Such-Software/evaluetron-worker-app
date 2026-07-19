@@ -14,11 +14,11 @@ project shells exist so store and desktop work can proceed without splitting the
 - Exchanges the short-lived `eve_` enrollment once inside the app—never through Termux or a shell.
 - Stores only the returned `evn_` node credential through platform secure storage.
 - Registers the paired node and heartbeats during an explicit, visible Start/Stop session.
-- Shows node identity, roles, connection state, distribution policy, and honest runtime capability.
+- Shows node identity, roles, connection state, distribution policy, and verified runtime capability.
 - Uses bottom navigation on phones and a navigation rail for keyboard/mouse desktop layouts.
 
 It does **not** execute inference yet. Registration advertises an empty generator list and
-`runtimeReady: false`; the UI says the model adapter is not installed. A future runtime must not
+`runtimeReady: false`; the UI says the model adapter is not installed. A runtime adapter must not
 advertise a generator until a local health probe proves that it can execute it.
 
 ## Enrollment contract
@@ -51,7 +51,7 @@ One codebase does not mean one capability policy:
   signature-verified native runtime/model adapters. Sessions remain explicit and stoppable.
 - **Store-safe:** Play/App Store builds permit only user-visible foreground work, approved static
   executable code, and models handled as data assets. They do not download executable plug-ins or
-  pretend to be an indefinite background daemon.
+  claim persistent background execution that the platform does not provide.
 
 The Android store track will need a declared foreground-service type, persistent notification,
 user-initiated start, immediate stop action, and current target SDK review before submission. The

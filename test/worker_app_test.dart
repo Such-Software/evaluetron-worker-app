@@ -26,7 +26,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Pair this node'), findsOneWidget);
     expect(find.byKey(const Key('enrollment-link-field')), findsOneWidget);
-    expect(find.textContaining('no shell or Termux steps'), findsOneWidget);
+    expect(find.textContaining('complete within the app'), findsOneWidget);
     expect(
       find.textContaining('Camera scanning is available on Android and iOS'),
       findsOneWidget,
@@ -38,7 +38,7 @@ void main() {
   });
 
   testWidgets(
-    'wide layout uses navigation rail and shows honest runtime state',
+    'wide layout uses navigation rail and shows verified runtime state',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;
