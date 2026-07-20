@@ -75,13 +75,25 @@ void main() {
     expect(unstarted.port, 0);
   });
 
-  test('route discovery advertises the socket local address', () {
-    final source = File(
-      'lib/features/worker/data/worker_job_server.dart',
-    ).readAsStringSync();
+  test('advertises the private interface closest to the Brain route', () {
+    final selected = selectAdvertisedAddress(InternetAddress('192.168.88.50'), [
+      InternetAddress.loopbackIPv4,
+      InternetAddress('10.42.1.20'),
+      InternetAddress('192.168.88.240'),
+      InternetAddress('192.168.1.12'),
+    ]);
 
-    expect(source, contains('return socket.address;'));
-    expect(source, isNot(contains('return socket.remoteAddress;')));
+    expect(selected.address, '192.168.88.240');
+  });
+
+  test('never advertises a public or loopback address to a private Brain', () {
+    expect(
+      () => selectAdvertisedAddress(InternetAddress('192.168.88.50'), [
+        InternetAddress.loopbackIPv4,
+        InternetAddress('8.8.8.8'),
+      ]),
+      throwsA(isA<SocketException>()),
+    );
   });
 }
 

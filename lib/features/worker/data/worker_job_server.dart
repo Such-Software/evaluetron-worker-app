@@ -178,10 +178,17 @@ class HttpWorkerJobServer implements WorkerServer {
       port,
       timeout: const Duration(seconds: 5),
     );
+    final destination = socket.remoteAddress;
     try {
-      // `Socket.address` is the local interface selected by the route. The
-      // remote Brain is available separately as `Socket.remoteAddress`.
-      return socket.address;
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: true,
+        includeLinkLocal: true,
+        type: destination.type,
+      );
+      return selectAdvertisedAddress(
+        destination,
+        interfaces.expand((interface) => interface.addresses),
+      );
     } finally {
       await socket.close();
     }
@@ -251,6 +258,51 @@ class HttpWorkerJobServer implements WorkerServer {
       ..add(body);
     await response.close();
   }
+}
+
+InternetAddress selectAdvertisedAddress(
+  InternetAddress destination,
+  Iterable<InternetAddress> candidates,
+) {
+  final matching = candidates.where((candidate) {
+    if (candidate.type != destination.type ||
+        !HttpWorkerJobServer._isPrivateOrLoopback(candidate)) {
+      return false;
+    }
+    if (destination.isLoopback) return candidate.isLoopback;
+    if (candidate.isLoopback) return false;
+    if (destination.isLinkLocal) return candidate.isLinkLocal;
+    return !candidate.isLinkLocal;
+  }).toList();
+  if (matching.isEmpty) {
+    throw const SocketException(
+      'No private local interface can advertise this Worker session.',
+    );
+  }
+  matching.sort((left, right) {
+    final prefix = _commonPrefixBits(
+      right.rawAddress,
+      destination.rawAddress,
+    ).compareTo(_commonPrefixBits(left.rawAddress, destination.rawAddress));
+    return prefix != 0 ? prefix : left.address.compareTo(right.address);
+  });
+  return matching.first;
+}
+
+int _commonPrefixBits(List<int> left, List<int> right) {
+  var bits = 0;
+  for (var index = 0; index < left.length && index < right.length; index++) {
+    final difference = left[index] ^ right[index];
+    if (difference == 0) {
+      bits += 8;
+      continue;
+    }
+    for (var bit = 7; bit >= 0; bit--) {
+      if ((difference & (1 << bit)) != 0) return bits;
+      bits++;
+    }
+  }
+  return bits;
 }
 
 class _BodyTooLarge implements Exception {
