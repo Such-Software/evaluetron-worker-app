@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:evaluetron_worker_app/features/network/data/managed_network_store.dart';
 import 'package:evaluetron_worker_app/features/network/domain/managed_network.dart';
 import 'package:evaluetron_worker_app/features/network/domain/network_enrollment.dart';
@@ -109,6 +111,23 @@ void main() {
       expect(controller.message, contains('Nebula engine is not available'));
     },
   );
+
+  test('reports a local listener failure without discarding pairing', () async {
+    final controller = WorkerController(
+      credentials: MemoryNodeCredentialStore(registration),
+      enrollmentClient: _FakeEnrollmentClient(registration),
+      fleetClient: _FakeFleetClient(),
+      jobServer: _FailingWorkerServer(),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    await controller.start();
+
+    expect(controller.registration, same(registration));
+    expect(controller.sessionStatus, WorkerSessionStatus.error);
+    expect(controller.message, contains('Could not open the Worker listener'));
+  });
 }
 
 class _FakeEnrollmentClient implements EnrollmentClient {
@@ -162,6 +181,13 @@ class _FakeWorkerServer implements WorkerServer {
   @override
   Future<void> stop() async {
     endpoint = null;
+  }
+}
+
+class _FailingWorkerServer extends _FakeWorkerServer {
+  @override
+  Future<void> start(NodeRegistration registration) {
+    throw const SocketException('address already in use');
   }
 }
 

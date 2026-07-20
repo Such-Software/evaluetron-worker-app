@@ -68,6 +68,21 @@ void main() {
     );
     expect(replay.statusCode, HttpStatus.unauthorized);
   });
+
+  test('default listener uses an OS-assigned port', () {
+    final unstarted = HttpWorkerJobServer(adapter: _EchoRuntime());
+
+    expect(unstarted.port, 0);
+  });
+
+  test('route discovery advertises the socket local address', () {
+    final source = File(
+      'lib/features/worker/data/worker_job_server.dart',
+    ).readAsStringSync();
+
+    expect(source, contains('return socket.address;'));
+    expect(source, isNot(contains('return socket.remoteAddress;')));
+  });
 }
 
 class _EchoRuntime implements WorkerRuntimeAdapter {

@@ -18,7 +18,7 @@ abstract interface class WorkerServer {
 class HttpWorkerJobServer implements WorkerServer {
   HttpWorkerJobServer({
     required WorkerRuntimeAdapter adapter,
-    this.port = 8090,
+    this.port = 0,
     this.maxRequestBytes = 1024 * 1024,
     this.maxArtifactBytes = 64 * 1024 * 1024,
     this.advertisedHost,
@@ -179,6 +179,8 @@ class HttpWorkerJobServer implements WorkerServer {
       timeout: const Duration(seconds: 5),
     );
     try {
+      // `Socket.address` is the local interface selected by the route. The
+      // remote Brain is available separately as `Socket.remoteAddress`.
       return socket.address;
     } finally {
       await socket.close();

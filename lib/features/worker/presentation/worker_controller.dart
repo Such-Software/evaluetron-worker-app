@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -131,6 +132,11 @@ class WorkerController extends ChangeNotifier {
       await _jobServer.stop();
       sessionStatus = WorkerSessionStatus.error;
       message = error.message;
+    } on SocketException {
+      await _jobServer.stop();
+      sessionStatus = WorkerSessionStatus.error;
+      message =
+          'Could not open the Worker listener on this device. Close another local Worker or restart the app.';
     } on Object {
       await _jobServer.stop();
       sessionStatus = WorkerSessionStatus.error;
