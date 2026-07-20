@@ -7,6 +7,7 @@ import '../../pairing/data/enrollment_client.dart';
 import '../../pairing/data/secure_node_credential_store.dart';
 import '../../pairing/domain/enrollment.dart';
 import '../../pairing/domain/node_registration.dart';
+import '../../pairing/domain/pairing_result.dart';
 import '../data/fleet_client.dart';
 import '../data/worker_job_server.dart';
 import '../domain/capability_policy.dart';
@@ -54,7 +55,7 @@ class WorkerController extends ChangeNotifier {
     }
   }
 
-  Future<bool> pair(EnrollmentDraft draft) async {
+  Future<PairingResult> pair(EnrollmentDraft draft) async {
     loading = true;
     message = null;
     notifyListeners();
@@ -73,16 +74,16 @@ class WorkerController extends ChangeNotifier {
       await _credentials.write(enrolled);
       registration = enrolled;
       message = 'Paired as ${enrolled.nodeName}.';
-      return true;
+      return const PairingResult.success();
     } on EnrollmentException catch (error) {
       message = error.message;
-      return false;
+      return PairingResult.failure(error.message);
     } on NetworkEnrollmentException catch (error) {
       message = error.message;
-      return false;
+      return PairingResult.failure(error.message);
     } on Object {
       message = 'Could not save the node credential securely.';
-      return false;
+      return PairingResult.failure(message);
     } finally {
       loading = false;
       notifyListeners();

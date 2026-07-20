@@ -65,7 +65,8 @@ void main() {
       ),
     );
 
-    expect(paired, isTrue);
+    expect(paired.paired, isTrue);
+    expect(paired.error, isNull);
     expect(store.value, same(registration));
     expect(store.value?.nodeToken, startsWith('evn_'));
   });
@@ -101,7 +102,9 @@ void main() {
         ).toString(),
       );
 
-      expect(await controller.pair(draft), isFalse);
+      final result = await controller.pair(draft);
+      expect(result.paired, isFalse);
+      expect(result.error, contains('Nebula engine is not available'));
       expect(appEnrollment.calls, 0);
       expect(controller.message, contains('Nebula engine is not available'));
     },

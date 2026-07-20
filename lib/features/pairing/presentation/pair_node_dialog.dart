@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../domain/enrollment.dart';
+import '../domain/pairing_result.dart';
 
 class PairNodeDialog extends StatefulWidget {
   const PairNodeDialog({
@@ -12,7 +13,7 @@ class PairNodeDialog extends StatefulWidget {
     super.key,
   });
 
-  final Future<bool> Function(EnrollmentDraft draft) onPair;
+  final Future<PairingResult> Function(EnrollmentDraft draft) onPair;
   final bool? scannerSupported;
 
   @override
@@ -25,7 +26,7 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
   final _brain = TextEditingController();
   final _token = TextEditingController();
   bool _manual = false;
-  bool _plainHttpAccepted = false;
+  String? _approvedPlainHttpOrigin;
   bool _submitting = false;
   String? _error;
 
@@ -50,25 +51,73 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
     if (!_formKey.currentState!.validate()) return;
     try {
       final draft = _parse();
-      if (draft.usesPlainHttp && !_plainHttpAccepted) {
+      if (draft.usesPlainHttp &&
+          _approvedPlainHttpOrigin != draft.brainBaseUrl.origin) {
+        final approved = await _confirmPlainHttp(draft);
+        if (!approved || !mounted) return;
         setState(() {
-          _error = draft.networkEnrollment == null
-              ? 'Plain HTTP exposes the one-time enrollment token. Confirm only on a trusted private network.'
-              : 'The private fleet address uses HTTP inside the managed tunnel. Confirm this private route.';
+          _approvedPlainHttpOrigin = draft.brainBaseUrl.origin;
+          _error = null;
         });
-        return;
       }
       setState(() {
         _submitting = true;
         _error = null;
       });
-      final paired = await widget.onPair(draft);
-      if (paired && mounted) Navigator.pop(context);
+      final result = await widget.onPair(draft);
+      if (!mounted) return;
+      if (result.paired) {
+        Navigator.pop(context);
+      } else {
+        setState(() {
+          _error = result.error ?? 'Enrollment did not complete.';
+        });
+      }
     } on FormatException catch (error) {
-      setState(() => _error = error.message);
+      if (mounted) setState(() => _error = error.message);
+    } on Object {
+      if (mounted) {
+        setState(() {
+          _error = 'Enrollment could not complete safely. Try a new Fleet QR.';
+        });
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<bool> _confirmPlainHttp(EnrollmentDraft draft) async {
+    final managed = draft.networkEnrollment != null;
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(
+              managed
+                  ? 'Use the private tunnel route?'
+                  : 'Use this trusted LAN?',
+            ),
+            content: Text(
+              managed
+                  ? 'Enrollment will continue over ${draft.brainBaseUrl.origin} after the managed tunnel connects.'
+                  : 'The one-time credential will be sent to ${draft.brainBaseUrl.origin} without TLS. Continue only while this phone is on the trusted private network.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Go back'),
+              ),
+              FilledButton(
+                key: const Key('confirm-private-http'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(
+                  managed ? 'Use private route' : 'Pair on trusted LAN',
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _scan() async {
@@ -79,6 +128,7 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
     setState(() {
       _manual = false;
       _link.text = result;
+      _approvedPlainHttpOrigin = null;
       _error = null;
     });
     await _submit();
@@ -133,6 +183,7 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
                   onSelectionChanged: (value) {
                     setState(() {
                       _manual = value.single;
+                      _approvedPlainHttpOrigin = null;
                       _error = null;
                     });
                   },
@@ -186,18 +237,6 @@ class _PairNodeDialogState extends State<PairNodeDialog> {
                         : null,
                   ),
                 ],
-                const SizedBox(height: 12),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _plainHttpAccepted,
-                  onChanged: (value) {
-                    setState(() => _plainHttpAccepted = value ?? false);
-                  },
-                  title: const Text('Allow HTTP on my trusted private network'),
-                  subtitle: const Text(
-                    'Leave off for HTTPS. TLS certificates are never bypassed.',
-                  ),
-                ),
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Semantics(
