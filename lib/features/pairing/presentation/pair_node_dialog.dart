@@ -245,10 +245,18 @@ class _EnrollmentScanner extends StatefulWidget {
 
 class _EnrollmentScannerState extends State<_EnrollmentScanner> {
   final MobileScannerController _controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
+    cameraResolution: const Size(1920, 1080),
+    detectionSpeed: DetectionSpeed.normal,
+    detectionTimeoutMs: 250,
     formats: const [BarcodeFormat.qrCode],
+    lensType: CameraLensType.normal,
+    autoZoom: Platform.isAndroid,
   );
   bool _handled = false;
+  bool _processing = false;
+  String _guidance =
+      'Point the camera at the private QR shown in Evaluetron Fleet.';
+  bool _guidanceIsError = false;
 
   @override
   void dispose() {
@@ -257,25 +265,28 @@ class _EnrollmentScannerState extends State<_EnrollmentScanner> {
   }
 
   void _detected(BarcodeCapture capture) {
-    if (_handled || capture.barcodes.isEmpty) return;
-    final value = capture.barcodes.first.rawValue;
-    if (value == null || value.isEmpty) return;
-    try {
-      EnrollmentDraft.parseUri(value);
-      _handled = true;
-      _controller.stop();
-      Navigator.pop(context, value);
-    } on FormatException {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text(
-              'That is not a valid Evaluetron Worker enrollment QR.',
-            ),
-          ),
-        );
+    if (_handled || _processing) return;
+    _processing = true;
+    _handleDetection(capture);
+  }
+
+  Future<void> _handleDetection(BarcodeCapture capture) async {
+    final decoded = decodedBarcodeValues(capture);
+    final value = validEnrollmentValue(capture);
+    if (value == null) {
+      if (decoded.isNotEmpty && mounted) {
+        setState(() {
+          _guidance =
+              'QR detected, but it is not a valid Worker enrollment. Create a new Phone QR in Fleet.';
+          _guidanceIsError = true;
+        });
+      }
+      _processing = false;
+      return;
     }
+    _handled = true;
+    await _controller.stop();
+    if (mounted) Navigator.pop(context, value);
   }
 
   @override
@@ -320,17 +331,23 @@ class _EnrollmentScannerState extends State<_EnrollmentScanner> {
               ),
             ),
           ),
-          const Align(
+          Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
               child: Padding(
-                padding: EdgeInsets.all(24),
+                padding: const EdgeInsets.all(24),
                 child: Card(
                   child: Padding(
-                    padding: EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(12),
                     child: Text(
-                      'Point the camera at the private QR shown in Evaluetron Fleet.',
+                      _guidance,
                       textAlign: TextAlign.center,
+                      style: _guidanceIsError
+                          ? TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                              fontWeight: FontWeight.w700,
+                            )
+                          : null,
                     ),
                   ),
                 ),
@@ -341,4 +358,29 @@ class _EnrollmentScannerState extends State<_EnrollmentScanner> {
       ),
     );
   }
+}
+
+@visibleForTesting
+List<String> decodedBarcodeValues(BarcodeCapture capture) {
+  final values = <String>{};
+  for (final barcode in capture.barcodes) {
+    for (final candidate in [barcode.rawValue, barcode.displayValue]) {
+      final normalized = candidate?.trim() ?? '';
+      if (normalized.isNotEmpty) values.add(normalized);
+    }
+  }
+  return values.toList(growable: false);
+}
+
+@visibleForTesting
+String? validEnrollmentValue(BarcodeCapture capture) {
+  for (final value in decodedBarcodeValues(capture)) {
+    try {
+      EnrollmentDraft.parseUri(value);
+      return value;
+    } on FormatException {
+      continue;
+    }
+  }
+  return null;
 }
