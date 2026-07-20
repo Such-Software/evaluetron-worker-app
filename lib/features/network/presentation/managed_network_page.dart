@@ -24,12 +24,8 @@ class ManagedNetworkPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Managed network',
+                    'Network',
                     style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'A separate, user-approved private network boundary for reaching the paired brain.',
                   ),
                   const SizedBox(height: 24),
                   Card(
@@ -53,38 +49,46 @@ class ManagedNetworkPage extends StatelessWidget {
                           const SizedBox(height: 8),
                           Semantics(
                             liveRegion: true,
-                            child: Text(
-                              controller.message ??
-                                  'Inspecting managed network state.',
-                            ),
+                            child: Text(_summary(controller.status)),
                           ),
                           const SizedBox(height: 20),
                           Wrap(
                             spacing: 12,
                             runSpacing: 12,
                             children: [
-                              FilledButton.icon(
-                                key: const Key('network-start'),
-                                onPressed:
-                                    controller.status ==
-                                        ManagedNetworkStatus.ready
-                                    ? controller.start
-                                    : null,
-                                icon: const Icon(Icons.play_arrow),
-                                label: const Text('Start private network'),
-                              ),
-                              OutlinedButton.icon(
-                                key: const Key('network-stop'),
-                                onPressed: active ? controller.stop : null,
-                                icon: const Icon(Icons.stop),
-                                label: const Text('Stop'),
-                              ),
-                              TextButton.icon(
-                                key: const Key('network-refresh'),
-                                onPressed: controller.initialize,
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Check again'),
-                              ),
+                              if (controller.status ==
+                                  ManagedNetworkStatus.ready)
+                                FilledButton.icon(
+                                  key: const Key('network-start'),
+                                  onPressed: controller.start,
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('Start'),
+                                ),
+                              if (active)
+                                OutlinedButton.icon(
+                                  key: const Key('network-stop'),
+                                  onPressed: controller.stop,
+                                  icon: const Icon(Icons.stop),
+                                  label: const Text('Stop'),
+                                ),
+                              if (controller.status ==
+                                      ManagedNetworkStatus.engineUnavailable ||
+                                  controller.status ==
+                                      ManagedNetworkStatus.error)
+                                TextButton.icon(
+                                  key: const Key('network-refresh'),
+                                  onPressed: controller.initialize,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Retry'),
+                                ),
+                              if (controller.status ==
+                                  ManagedNetworkStatus.consentRequired)
+                                FilledButton.tonalIcon(
+                                  key: const Key('network-consent'),
+                                  onPressed: controller.requestConsent,
+                                  icon: const Icon(Icons.admin_panel_settings),
+                                  label: const Text('Review permission'),
+                                ),
                             ],
                           ),
                         ],
@@ -93,74 +97,41 @@ class ManagedNetworkPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Traffic boundary',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 12),
-                          const _PolicyLine(
-                            icon: Icons.route,
-                            text:
-                                'Only the managed brain host route is eligible.',
-                          ),
-                          const _PolicyLine(
-                            icon: Icons.public_off,
-                            text: 'No default route or consumer VPN behavior.',
-                          ),
-                          const _PolicyLine(
-                            icon: Icons.dns_outlined,
-                            text: 'No DNS interception.',
-                          ),
-                          const _PolicyLine(
-                            icon: Icons.verified_user_outlined,
-                            text:
-                                'Normal TLS verification remains in force above the tunnel.',
-                          ),
-                          if (profile != null)
-                            _PolicyLine(
-                              icon: Icons.lan_outlined,
-                              text:
-                                  'Approved route: ${profile.routePolicy.routes.single}',
+                    child: ExpansionTile(
+                      leading: const Icon(Icons.info_outline),
+                      title: const Text('Details'),
+                      childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      children: [
+                        if (controller.message != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(controller.message!),
                             ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Consent and readiness',
-                            style: Theme.of(context).textTheme.titleLarge,
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Android VPN permission is requested only after you choose to enable a validated profile. '
-                            'This build includes the native consent and service boundary, but deliberately does not '
-                            'establish a TUN interface because the pinned Nebula packet engine is not linked yet.',
+                        const _PolicyLine(
+                          icon: Icons.route,
+                          text: 'Only the Brain route is eligible.',
+                        ),
+                        const _PolicyLine(
+                          icon: Icons.public_off,
+                          text: 'No default route.',
+                        ),
+                        const _PolicyLine(
+                          icon: Icons.dns_outlined,
+                          text: 'No DNS interception.',
+                        ),
+                        const _PolicyLine(
+                          icon: Icons.verified_user_outlined,
+                          text: 'TLS verification remains enabled.',
+                        ),
+                        if (profile != null)
+                          _PolicyLine(
+                            icon: Icons.lan_outlined,
+                            text: 'Route: ${profile.routePolicy.routes.single}',
                           ),
-                          const SizedBox(height: 16),
-                          FilledButton.tonalIcon(
-                            key: const Key('network-consent'),
-                            onPressed:
-                                controller.status ==
-                                    ManagedNetworkStatus.consentRequired
-                                ? controller.requestConsent
-                                : null,
-                            icon: const Icon(Icons.admin_panel_settings),
-                            label: const Text('Review VPN permission'),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
                   ),
                 ],
@@ -180,6 +151,16 @@ class ManagedNetworkPage extends StatelessWidget {
     ManagedNetworkStatus.ready => 'Ready to connect',
     ManagedNetworkStatus.running => 'Private network active',
     ManagedNetworkStatus.error => 'Network needs attention',
+  };
+
+  static String _summary(ManagedNetworkStatus status) => switch (status) {
+    ManagedNetworkStatus.loading => 'Checking status…',
+    ManagedNetworkStatus.engineUnavailable => 'Not available in this build.',
+    ManagedNetworkStatus.notEnrolled => 'No private network is configured.',
+    ManagedNetworkStatus.consentRequired => 'Permission is required.',
+    ManagedNetworkStatus.ready => 'Ready.',
+    ManagedNetworkStatus.running => 'Connected.',
+    ManagedNetworkStatus.error => 'Could not check the network.',
   };
 }
 

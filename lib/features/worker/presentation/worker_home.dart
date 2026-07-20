@@ -72,9 +72,9 @@ class _WorkerHomeState extends State<WorkerHome> {
                             : NavigationRailLabelType.all,
                         destinations: const [
                           NavigationRailDestination(
-                            icon: Icon(Icons.memory_outlined),
-                            selectedIcon: Icon(Icons.memory),
-                            label: Text('Node'),
+                            icon: Icon(Icons.home_outlined),
+                            selectedIcon: Icon(Icons.home),
+                            label: Text('Worker'),
                           ),
                           NavigationRailDestination(
                             icon: Icon(Icons.vpn_lock_outlined),
@@ -82,14 +82,9 @@ class _WorkerHomeState extends State<WorkerHome> {
                             label: Text('Network'),
                           ),
                           NavigationRailDestination(
-                            icon: Icon(Icons.view_list_outlined),
-                            selectedIcon: Icon(Icons.view_list),
-                            label: Text('Capabilities'),
-                          ),
-                          NavigationRailDestination(
-                            icon: Icon(Icons.settings_outlined),
-                            selectedIcon: Icon(Icons.settings),
-                            label: Text('Settings'),
+                            icon: Icon(Icons.more_horiz),
+                            selectedIcon: Icon(Icons.more),
+                            label: Text('More'),
                           ),
                         ],
                       ),
@@ -112,9 +107,9 @@ class _WorkerHomeState extends State<WorkerHome> {
                       onDestinationSelected: _select,
                       destinations: const [
                         NavigationDestination(
-                          icon: Icon(Icons.memory_outlined),
-                          selectedIcon: Icon(Icons.memory),
-                          label: 'Node',
+                          icon: Icon(Icons.home_outlined),
+                          selectedIcon: Icon(Icons.home),
+                          label: 'Worker',
                         ),
                         NavigationDestination(
                           icon: Icon(Icons.vpn_lock_outlined),
@@ -122,14 +117,9 @@ class _WorkerHomeState extends State<WorkerHome> {
                           label: 'Network',
                         ),
                         NavigationDestination(
-                          icon: Icon(Icons.view_list_outlined),
-                          selectedIcon: Icon(Icons.view_list),
-                          label: 'Capabilities',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(Icons.settings_outlined),
-                          selectedIcon: Icon(Icons.settings),
-                          label: 'Settings',
+                          icon: Icon(Icons.more_horiz),
+                          selectedIcon: Icon(Icons.more),
+                          label: 'More',
                         ),
                       ],
                     ),
@@ -145,8 +135,7 @@ class _WorkerHomeState extends State<WorkerHome> {
   Widget _pageForIndex() => switch (_selectedIndex) {
     0 => _NodePage(controller: widget.controller),
     1 => ManagedNetworkPage(controller: widget.networkController),
-    2 => _CapabilitiesPage(controller: widget.controller),
-    _ => _SettingsPage(controller: widget.controller),
+    _ => _MorePage(controller: widget.controller),
   };
 }
 
@@ -183,27 +172,16 @@ class _NodePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'EDGE WORKER',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            registration == null
-                ? 'Make this device a node'
-                : registration.nodeName,
+            registration == null ? 'Pair this device' : registration.nodeName,
             style: Theme.of(context).textTheme.headlineMedium,
           ),
-          const SizedBox(height: 8),
-          Text(
-            registration == null
-                ? 'Pair directly with a brain. No terminal, copied command, or shared fleet secret.'
-                : 'Paired securely with ${registration.brainBaseUrl.host}',
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
+          if (registration == null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Scan a Fleet QR to get started.',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
           const SizedBox(height: 24),
           if (registration == null)
             Card(
@@ -214,15 +192,6 @@ class _NodePage extends StatelessWidget {
                   children: [
                     const Icon(Icons.phonelink_lock, size: 44),
                     const SizedBox(height: 16),
-                    Text(
-                      'One-time app enrollment',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Create a Phone or Worker enrollment in Fleet, then paste its private link here.',
-                    ),
-                    const SizedBox(height: 20),
                     FilledButton.icon(
                       key: const Key('open-pairing'),
                       onPressed: () => showDialog<void>(
@@ -231,7 +200,7 @@ class _NodePage extends StatelessWidget {
                         builder: (_) => PairNodeDialog(onPair: controller.pair),
                       ),
                       icon: const Icon(Icons.add_link),
-                      label: const Text('Pair node'),
+                      label: const Text('Scan Fleet QR'),
                     ),
                   ],
                 ),
@@ -239,7 +208,8 @@ class _NodePage extends StatelessWidget {
             )
           else
             _SessionCard(controller: controller),
-          if (controller.message != null) ...[
+          if (controller.sessionStatus == WorkerSessionStatus.error &&
+              controller.message != null) ...[
             const SizedBox(height: 16),
             Semantics(
               liveRegion: true,
@@ -251,39 +221,6 @@ class _NodePage extends StatelessWidget {
               ),
             ),
           ],
-          const SizedBox(height: 24),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Runtime status',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 12),
-                  const _StatusRow(
-                    icon: Icons.security,
-                    label: 'Credential',
-                    value: 'Platform-secure storage',
-                  ),
-                  _StatusRow(
-                    icon: Icons.model_training_outlined,
-                    label: 'Model adapter',
-                    value: 'Not installed',
-                    warning: true,
-                  ),
-                  _StatusRow(
-                    icon: Icons.workspaces_outline,
-                    label: 'Advertised generators',
-                    value: 'None',
-                    warning: true,
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -312,149 +249,45 @@ class _SessionCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              running ? 'Worker session active' : 'Worker session stopped',
+              running
+                  ? 'Online'
+                  : busy
+                  ? 'Connecting…'
+                  : 'Offline',
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
             Text(
               running
-                  ? 'This app is visible and heartbeating to the paired brain.'
-                  : 'Starting registers this device and keeps a foreground session alive while the app is open.',
+                  ? 'Connected to the Brain.'
+                  : 'Start when this device should accept work.',
             ),
             const SizedBox(height: 20),
             Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
-                FilledButton.icon(
-                  key: const Key('start-session'),
-                  onPressed: running || busy ? null : controller.start,
-                  icon: busy
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.play_arrow),
-                  label: Text(busy ? 'Starting…' : 'Start session'),
-                ),
-                OutlinedButton.icon(
-                  key: const Key('stop-session'),
-                  onPressed: running ? controller.stop : null,
-                  icon: const Icon(Icons.stop),
-                  label: const Text('Stop'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CapabilitiesPage extends StatelessWidget {
-  const _CapabilitiesPage({required this.controller});
-
-  final WorkerController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final policy = controller.policy;
-    return _PageFrame(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Capability policy',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'The same adaptive UI targets Android and Linux, but distribution rules change what a build may do.',
-          ),
-          const SizedBox(height: 20),
-          SegmentedButton<DistributionTrack>(
-            segments: DistributionTrack.values
-                .map(
-                  (track) =>
-                      ButtonSegment(value: track, label: Text(track.label)),
-                )
-                .toList(),
-            selected: {controller.track},
-            onSelectionChanged: (value) => controller.setTrack(value.single),
-          ),
-          const SizedBox(height: 20),
-          _PolicyCard(
-            title: '${policy.track.label}: allowed',
-            icon: Icons.check_circle_outline,
-            items: policy.allowed,
-          ),
-          const SizedBox(height: 16),
-          _PolicyCard(
-            title: 'Boundaries',
-            icon: Icons.gpp_maybe_outlined,
-            items: policy.restrictions,
-          ),
-          const SizedBox(height: 16),
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'Current MVP truth: pairing and foreground fleet presence work. '
-                'Inference remains disabled until a signed runtime adapter and model provenance checks ship.',
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PolicyCard extends StatelessWidget {
-  const _PolicyCard({
-    required this.title,
-    required this.icon,
-    required this.items,
-  });
-
-  final String title;
-  final IconData icon;
-  final List<String> items;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleLarge,
+                if (running)
+                  OutlinedButton.icon(
+                    key: const Key('stop-session'),
+                    onPressed: controller.stop,
+                    icon: const Icon(Icons.stop),
+                    label: const Text('Stop'),
+                  )
+                else
+                  FilledButton.icon(
+                    key: const Key('start-session'),
+                    onPressed: busy ? null : controller.start,
+                    icon: busy
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.play_arrow),
+                    label: Text(busy ? 'Starting…' : 'Start'),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            for (final item in items)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('•'),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(item)),
-                  ],
-                ),
-              ),
           ],
         ),
       ),
@@ -462,8 +295,8 @@ class _PolicyCard extends StatelessWidget {
   }
 }
 
-class _SettingsPage extends StatelessWidget {
-  const _SettingsPage({required this.controller});
+class _MorePage extends StatelessWidget {
+  const _MorePage({required this.controller});
 
   final WorkerController controller;
 
@@ -474,42 +307,68 @@ class _SettingsPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Node settings',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
+          Text('More', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 20),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: registration == null
-                  ? const Text('This device is not paired.')
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _StatusRow(
-                          icon: Icons.badge_outlined,
-                          label: 'Node',
-                          value: registration.nodeName,
+            child: ExpansionTile(
+              leading: const Icon(Icons.memory_outlined),
+              title: const Text('Capabilities'),
+              subtitle: const Text('None enabled'),
+              childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              children: [
+                SegmentedButton<DistributionTrack>(
+                  segments: DistributionTrack.values
+                      .map(
+                        (track) => ButtonSegment(
+                          value: track,
+                          label: Text(track.label),
                         ),
-                        _StatusRow(
-                          icon: Icons.dns_outlined,
-                          label: 'Brain',
-                          value: registration.brainBaseUrl.host,
-                        ),
-                        _StatusRow(
-                          icon: Icons.admin_panel_settings_outlined,
-                          label: 'Roles',
-                          value: registration.roles.join(', '),
-                        ),
-                        const Divider(height: 32),
-                        OutlinedButton.icon(
-                          onPressed: () => _confirmForget(context),
-                          icon: const Icon(Icons.link_off),
-                          label: const Text('Forget this node'),
-                        ),
-                      ],
-                    ),
+                      )
+                      .toList(),
+                  selected: {controller.track},
+                  onSelectionChanged: (value) =>
+                      controller.setTrack(value.single),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No model runtime is installed. This node stays online but does not advertise generation capabilities.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ExpansionTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Node details'),
+              subtitle: Text(registration?.nodeName ?? 'Not paired'),
+              childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              children: registration == null
+                  ? [const Text('This device is not paired.')]
+                  : [
+                      _StatusRow(
+                        icon: Icons.dns_outlined,
+                        label: 'Brain',
+                        value: registration.brainBaseUrl.host,
+                      ),
+                      _StatusRow(
+                        icon: Icons.admin_panel_settings_outlined,
+                        label: 'Roles',
+                        value: registration.roles.join(', '),
+                      ),
+                      const _StatusRow(
+                        icon: Icons.security,
+                        label: 'Credential',
+                        value: 'Secure storage',
+                      ),
+                      const Divider(height: 32),
+                      OutlinedButton.icon(
+                        onPressed: () => _confirmForget(context),
+                        icon: const Icon(Icons.link_off),
+                        label: const Text('Forget this node'),
+                      ),
+                    ],
             ),
           ),
         ],
@@ -546,13 +405,11 @@ class _StatusRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    this.warning = false,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final bool warning;
 
   @override
   Widget build(BuildContext context) {
@@ -560,10 +417,7 @@ class _StatusRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(
-            icon,
-            color: warning ? Theme.of(context).colorScheme.tertiary : null,
-          ),
+          Icon(icon),
           const SizedBox(width: 12),
           Expanded(child: Text(label)),
           const SizedBox(width: 12),

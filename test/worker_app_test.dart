@@ -31,7 +31,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Make this device a node'), findsOneWidget);
+    expect(find.text('Pair this device'), findsOneWidget);
+    expect(find.text('Scan a Fleet QR to get started.'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
     await tester.tap(find.byKey(const Key('open-pairing')));
     await tester.pumpAndSettle();
@@ -77,22 +78,31 @@ void main() {
 
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.text('phone-s22'), findsOneWidget);
-      expect(find.text('Not installed'), findsOneWidget);
-      expect(find.text('None'), findsOneWidget);
+      expect(find.text('Offline'), findsOneWidget);
+      expect(find.text('Runtime status'), findsNothing);
       expect(find.byKey(const Key('start-session')), findsOneWidget);
-      expect(find.byKey(const Key('stop-session')), findsOneWidget);
+      expect(find.byKey(const Key('stop-session')), findsNothing);
 
       await tester.tap(find.text('Network'));
       await tester.pumpAndSettle();
       expect(find.text('Tunnel engine not installed'), findsOneWidget);
+      expect(find.text('Not available in this build.'), findsOneWidget);
+      expect(find.text('No default route.'), findsNothing);
+      expect(find.byKey(const Key('network-refresh')), findsOneWidget);
+      expect(find.byKey(const Key('network-start')), findsNothing);
+      await tester.tap(find.text('Details'));
+      await tester.pumpAndSettle();
+      expect(find.text('No default route.'), findsOneWidget);
+
+      await tester.tap(find.text('More'));
+      await tester.pumpAndSettle();
+      expect(find.text('Capabilities'), findsOneWidget);
+      expect(find.text('Node details'), findsOneWidget);
+      expect(find.text('None enabled'), findsOneWidget);
       expect(
-        find.text('No default route or consumer VPN behavior.'),
-        findsOneWidget,
+        find.textContaining('No model runtime is installed'),
+        findsNothing,
       );
-      final startNetwork = tester.widget<FilledButton>(
-        find.byKey(const Key('network-start')),
-      );
-      expect(startNetwork.onPressed, isNull);
     },
   );
 }
