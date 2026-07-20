@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/brand.dart';
 import '../../network/presentation/managed_network_controller.dart';
 import '../../network/presentation/managed_network_page.dart';
 import '../../pairing/presentation/pair_node_dialog.dart';
@@ -32,8 +33,15 @@ class _WorkerHomeState extends State<WorkerHome> {
             widget.controller.registration == null) {
           return const Scaffold(
             body: Center(
-              child: CircularProgressIndicator(
-                semanticsLabel: 'Loading secure node state',
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  EvaluetronMark(size: 52, semanticLabel: 'Evaluetron Worker'),
+                  SizedBox(height: 24),
+                  CircularProgressIndicator(
+                    semanticsLabel: 'Loading secure node state',
+                  ),
+                ],
               ),
             ),
           );
@@ -44,7 +52,8 @@ class _WorkerHomeState extends State<WorkerHome> {
             final content = _pageForIndex();
             return Scaffold(
               appBar: AppBar(
-                title: const Text('Evaluetron Worker'),
+                toolbarHeight: 72,
+                title: const EvaluetronLockup(),
                 actions: [
                   _ConnectionBadge(status: widget.controller.sessionStatus),
                   const SizedBox(width: 16),
@@ -173,6 +182,15 @@ class _NodePage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text(
+            'EDGE WORKER',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
           Text(
             registration == null
                 ? 'Make this device a node'

@@ -39,7 +39,9 @@ class _WorkerAppState extends State<WorkerApp> {
     return MaterialApp(
       title: 'Evaluetron Worker',
       debugShowCheckedModeBanner: false,
-      theme: buildWorkerTheme(),
+      themeMode: ThemeMode.system,
+      theme: buildWorkerTheme(Brightness.light),
+      darkTheme: buildWorkerTheme(Brightness.dark),
       home: WorkerHome(
         controller: widget.controller,
         networkController: widget.networkController,

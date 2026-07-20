@@ -111,3 +111,6 @@ nonce, and exact body hash are authenticated with a key derived from the node cr
 outside the clock window, duplicate nonces, modified bodies, oversized inputs, and concurrent work
 beyond local capacity are rejected. The controller owns the foreground session and stops both the
 job listener and heartbeat on Stop/dispose. No credential is passed into widgets or displayed.
+
+Visual identity and reproducible platform-asset generation are documented in
+[docs/BRAND.md](docs/BRAND.md).
