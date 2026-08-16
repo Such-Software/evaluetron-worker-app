@@ -12,7 +12,10 @@ project shells exist so store and desktop work can proceed without splitting the
 
 - Scans a Fleet enrollment QR on Android/iOS, or accepts the same URI by paste/manual entry.
 - Exchanges the short-lived `eve_` enrollment once inside the app—never through Termux or a shell.
-- Stores only the returned `evn_` node credential through platform secure storage.
+- Stores only the returned `evn_` node credential through platform secure storage, pinned to
+  this device: the Keychain item is `unlocked_this_device` and Android backup and
+  device-to-device transfer are both disabled. A node credential restored onto a second
+  handset would be two nodes presenting one identity, so it must not travel.
 - Registers the paired node and heartbeats during an explicit, visible Start/Stop session.
 - Serves a bounded private job endpoint and accepts only replay-protected, authenticated dispatches
   from the paired brain.

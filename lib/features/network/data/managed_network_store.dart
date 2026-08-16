@@ -7,7 +7,15 @@ import '../domain/network_enrollment.dart';
 
 class PlatformManagedNetworkSecretStore implements ManagedNetworkSecretStore {
   PlatformManagedNetworkSecretStore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage(
+      aOptions: AndroidOptions(storageNamespace: 'evaluetron_worker'),
+      iOptions: IOSOptions(
+        accessibility: KeychainAccessibility.unlocked_this_device,
+      ),
+      mOptions: MacOsOptions(
+        accessibility: KeychainAccessibility.unlocked_this_device,
+      ),
+    );
 
   static const _key = 'evaluetron.managed-network.secret.v1';
   final FlutterSecureStorage _storage;

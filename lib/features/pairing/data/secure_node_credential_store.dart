@@ -12,7 +12,15 @@ abstract interface class NodeCredentialStore {
 
 class PlatformSecureNodeCredentialStore implements NodeCredentialStore {
   PlatformSecureNodeCredentialStore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage(
+      aOptions: AndroidOptions(storageNamespace: 'evaluetron_worker'),
+      iOptions: IOSOptions(
+        accessibility: KeychainAccessibility.unlocked_this_device,
+      ),
+      mOptions: MacOsOptions(
+        accessibility: KeychainAccessibility.unlocked_this_device,
+      ),
+    );
 
   static const _registrationKey = 'evaluetron.node.registration.v1';
   final FlutterSecureStorage _storage;

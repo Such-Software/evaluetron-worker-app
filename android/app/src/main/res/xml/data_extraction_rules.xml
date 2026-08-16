@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This device holds a node credential and, once the tunnel ships, a Nebula private key. Both are
+  bound to THIS device: a copy restored onto another handset would be a second node presenting one
+  identity. Exclude the app from cloud backup and from device-to-device transfer entirely rather
+  than relying on the KeyStore master key being non-exportable.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
