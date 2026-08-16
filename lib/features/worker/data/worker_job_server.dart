@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import '../../pairing/domain/node_registration.dart';
 import '../domain/runtime_adapter.dart';
 import 'dispatch_authenticator.dart';
@@ -39,6 +41,10 @@ class HttpWorkerJobServer implements WorkerServer {
   @override
   RuntimeDescriptor get runtime => _adapter.descriptor;
 
+  /// The single interface this listener accepts connections on.
+  @visibleForTesting
+  InternetAddress? get boundAddress => _server?.address;
+
   @override
   Future<void> start(NodeRegistration registration) async {
     if (_server != null) return;
@@ -50,10 +56,9 @@ class HttpWorkerJobServer implements WorkerServer {
         'The selected worker address is not private or loopback.',
       );
     }
-    final bindAddress = routeAddress.type == InternetAddressType.IPv6
-        ? InternetAddress.anyIPv6
-        : InternetAddress.anyIPv4;
-    final server = await HttpServer.bind(bindAddress, port, shared: false);
+    // Bind the advertised interface itself: /health answers before any
+    // authentication, so it must not be reachable from other networks.
+    final server = await HttpServer.bind(routeAddress, port, shared: false);
     _authenticator = DispatchAuthenticator(nodeToken: registration.nodeToken);
     _server = server;
     endpoint = Uri(

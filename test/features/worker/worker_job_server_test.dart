@@ -69,6 +69,15 @@ void main() {
     expect(replay.statusCode, HttpStatus.unauthorized);
   });
 
+  test('listens only on the advertised private interface', () {
+    expect(server.boundAddress?.address, '127.0.0.1');
+    expect(
+      server.boundAddress?.address,
+      isNot(InternetAddress.anyIPv4.address),
+    );
+    expect(server.endpoint?.host, '127.0.0.1');
+  });
+
   test('default listener uses an OS-assigned port', () {
     final unstarted = HttpWorkerJobServer(adapter: _EchoRuntime());
 
