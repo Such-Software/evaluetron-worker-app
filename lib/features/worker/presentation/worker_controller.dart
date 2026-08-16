@@ -171,37 +171,48 @@ class WorkerController extends ChangeNotifier {
     final current = registration;
     if (current == null || !_sessionLive) return;
     final registered = _registered;
-    try {
-      if (registered) {
-        await _fleetClient.heartbeat(current);
-      } else {
-        await _register(current);
-      }
+    final failure = await _sendBeat(current, registered: registered);
+    // The user may have stopped the session while the call was in flight.
+    if (!_sessionLive) return;
+    if (failure == null) {
       _registered = true;
       _retries = 0;
       _update(WorkerSessionStatus.running, _connectedMessage);
-    } on FleetException catch (error) {
-      if (!registered && error.failure == FleetFailure.unauthorized) {
-        await _endSession(
-          WorkerSessionStatus.error,
-          'The brain refused this node credential. Pair this device again.',
-        );
-        return;
-      }
-      final forgotten =
-          registered && error.failure == FleetFailure.unregistered;
+    } else if (!registered && failure == FleetFailure.unauthorized) {
+      await _endSession(
+        WorkerSessionStatus.error,
+        'The brain refused this node credential. Pair this device again.',
+      );
+      return;
+    } else {
+      final forgotten = registered && failure == FleetFailure.unregistered;
       _retry(
         forgotten
             ? 'The brain restarted. Re-registering this node.'
             : 'Lost contact with the brain. Retrying without ending the session.',
         immediate: forgotten,
       );
-    } on Object {
-      _retry(
-        'Lost contact with the brain. Retrying without ending the session.',
-      );
     }
     _scheduleBeat();
+  }
+
+  /// Null when the brain accepted the beat.
+  Future<FleetFailure?> _sendBeat(
+    NodeRegistration current, {
+    required bool registered,
+  }) async {
+    try {
+      if (registered) {
+        await _fleetClient.heartbeat(current);
+      } else {
+        await _register(current);
+      }
+      return null;
+    } on FleetException catch (error) {
+      return error.failure;
+    } on Object {
+      return FleetFailure.unavailable;
+    }
   }
 
   Future<void> stop() {
@@ -252,15 +263,19 @@ class WorkerController extends ChangeNotifier {
     _heartbeat = null;
     _registered = false;
     _retries = 0;
-    await _jobServer.stop();
+    // Settled before the listener closes, so a beat awaiting the brain sees a
+    // dead session the moment it resumes.
     sessionStatus = status;
     message = text;
+    await _jobServer.stop();
     notifyListeners();
   }
 
   @override
   void dispose() {
     _heartbeat?.cancel();
+    _heartbeat = null;
+    sessionStatus = WorkerSessionStatus.stopped;
     unawaited(_jobServer.stop());
     super.dispose();
   }

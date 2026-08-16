@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:evaluetron_worker_app/features/network/data/managed_network_store.dart';
@@ -217,6 +218,23 @@ void main() {
     expect(fleet.registered, 3);
   });
 
+  test('a stop during a beat leaves the session stopped', () async {
+    final fleet = _FakeFleetClient()..heartbeatGate = Completer<void>();
+    final jobServer = _FakeWorkerServer();
+    final controller = sessionController(fleet, jobServer);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.start();
+
+    final pending = controller.beat();
+    await controller.stop();
+    fleet.heartbeatGate!.complete();
+    await pending;
+
+    expect(controller.sessionStatus, WorkerSessionStatus.stopped);
+    expect(jobServer.endpoint, isNull);
+  });
+
   test('ends the session only when re-registration is refused', () async {
     final fleet = _FakeFleetClient()
       ..heartbeatFailure = const FleetException(
@@ -304,9 +322,12 @@ class _FakeFleetClient implements FleetClient {
   int registered = 0;
   FleetException? registerFailure;
   FleetException? heartbeatFailure;
+  Completer<void>? heartbeatGate;
 
   @override
   Future<void> heartbeat(NodeRegistration registration) async {
+    final gate = heartbeatGate;
+    if (gate != null) await gate.future;
     final failure = heartbeatFailure;
     if (failure != null) throw failure;
   }
