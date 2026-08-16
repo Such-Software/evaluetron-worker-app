@@ -1,0 +1,96 @@
+name: CI (analyze, test)
+
+# The same gate the pre-push hook runs locally, re-run on the trusted runner.
+# Kept deliberately small: this app's suite is seconds, so CI should be too.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluetron-worker-ci-${{ gitea.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  EXPECTED_FLUTTER_VERSION: "3.44.9"
+  EXPECTED_FLUTTER_REVISION: "6b182d2c7585eba26d4edce0f97630effd256c33"
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out clean source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          clean: true
+          persist-credentials: false
+
+      - name: Activate the reviewed Flutter revision from the Build cache
+        run: |
+          set -euo pipefail
+          FSDK="${SUCH_BUILD_ROOT:-$HOME/Build}/evaluetron-worker-app/cache/flutter-${EXPECTED_FLUTTER_VERSION}"
+          if [ ! -x "$FSDK/bin/flutter" ]; then
+            mkdir -p "$(dirname "$FSDK")"
+            git clone --depth 1 --branch "$EXPECTED_FLUTTER_VERSION" \
+              https://github.com/flutter/flutter.git "$FSDK"
+          fi
+          [ "$(git -C "$FSDK" rev-parse HEAD)" = "$EXPECTED_FLUTTER_REVISION" ] || {
+            echo "FATAL: cached Flutter is not the reviewed revision."
+            exit 1
+          }
+          git config --global --add safe.directory "$FSDK"
+          echo "$FSDK/bin" >> "$GITHUB_PATH"
+
+      - name: Keep Flutter output and caches under Build
+        run: |
+          set -euo pipefail
+          RUN_KEY="${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}"
+          BUILD_ROOT="${SUCH_BUILD_ROOT:-$HOME/Build}/evaluetron-worker-app/actions/$RUN_KEY/ci"
+          FLUTTER_BUILD="$BUILD_ROOT/flutter-build"
+          DART_TOOL="$BUILD_ROOT/dart-tool"
+          PUB_CACHE="${SUCH_BUILD_ROOT:-$HOME/Build}/evaluetron-worker-app/cache/pub"
+          rm -rf "$FLUTTER_BUILD" "$DART_TOOL"
+          mkdir -p "$FLUTTER_BUILD" "$DART_TOOL" "$PUB_CACHE"
+          if [ -e "$GITHUB_WORKSPACE/build" ] || [ -L "$GITHUB_WORKSPACE/build" ] ||
+             [ -e "$GITHUB_WORKSPACE/.dart_tool" ] || [ -L "$GITHUB_WORKSPACE/.dart_tool" ]; then
+            echo "FATAL: clean checkout unexpectedly contains generated output."
+            exit 1
+          fi
+          ln -s "$FLUTTER_BUILD" "$GITHUB_WORKSPACE/build"
+          ln -s "$DART_TOOL" "$GITHUB_WORKSPACE/.dart_tool"
+          echo "PUB_CACHE=$PUB_CACHE" >> "$GITHUB_ENV"
+
+      - name: Verify the activated SDK
+        run: |
+          set -euo pipefail
+          flutter --version --machine | python3 -c '
+          import json, os, sys
+          value = json.load(sys.stdin)
+          for key, env in (
+              ("frameworkVersion", "EXPECTED_FLUTTER_VERSION"),
+              ("frameworkRevision", "EXPECTED_FLUTTER_REVISION"),
+          ):
+              if value.get(key) != os.environ[env]:
+                  raise SystemExit(f"FATAL: {key}={value.get(key)!r}")
+          print("Flutter SDK: PASS")
+          '
+
+      - name: Resolve, format-check, analyze, and test
+        run: |
+          set -euo pipefail
+          flutter pub get --enforce-lockfile
+          git diff --exit-code -- pubspec.lock
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze --no-pub
+          flutter test --no-pub
