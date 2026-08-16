@@ -89,7 +89,12 @@ class WorkerController extends ChangeNotifier {
             'Managed network support is unavailable in this build.',
           );
         }
-        await service.enrollAndConnect(networkDraft);
+        final profile = await service.enrollAndConnect(networkDraft);
+        if (!profile.authorizesFleetOrigin(draft.brainBaseUrl)) {
+          throw const NetworkEnrollmentException(
+            'This QR sends the enrollment token to an address the brain did not issue. Create a new Phone QR in Fleet.',
+          );
+        }
       }
       final enrolled = await _enrollmentClient.enroll(draft);
       await _credentials.write(enrolled);

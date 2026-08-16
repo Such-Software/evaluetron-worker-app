@@ -27,8 +27,10 @@ advertise a generator until a local health probe proves that it can execute it.
 
 The app has a separate Managed Network surface and Android VPN privilege boundary. Version 2 pairing
 is explicitly network-first: generate a Nebula key on-device, enroll its public key over the public
-HTTPS Brain origin, securely store the issued profile, obtain VPN consent, verify the tunnel, then
-consume the application token over the private fleet address.
+HTTPS Brain origin, securely store the issued profile, obtain VPN consent, verify the tunnel, prove
+the QR's `fleet` host is the managed address the Brain issued, then consume the application token
+over that private fleet address. The `fleet` field is an independent, unauthenticated part of the
+QR, so a mismatch aborts before the one-time `eve_` token is sent anywhere.
 
 The pinned Nebula packet engine is not linked yet, so this build truthfully reports **Tunnel engine
 not installed**, never establishes a TUN interface, and does not consume a version 2 application

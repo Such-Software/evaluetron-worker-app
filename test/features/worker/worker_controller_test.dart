@@ -104,27 +104,65 @@ void main() {
       );
       addTearDown(controller.dispose);
       await controller.initialize();
-      final draft = EnrollmentDraft.parseUri(
-        Uri(
-          scheme: 'evaluetron-worker',
-          host: 'enroll',
-          queryParameters: {
-            'v': '2',
-            'brain': 'https://brain.example',
-            'fleet': 'http://192.168.100.1:8082',
-            'token': 'eve_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN',
-            'networkToken': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN123456',
-          },
-        ).toString(),
-      );
 
-      final result = await controller.pair(draft);
+      final result = await controller.pair(
+        _managedDraft(fleet: 'http://192.168.100.1:8082'),
+      );
       expect(result.paired, isFalse);
       expect(result.error, contains('Nebula engine is not available'));
       expect(appEnrollment.calls, 0);
       expect(controller.message, contains('Nebula engine is not available'));
     },
   );
+
+  test('v2 refuses a QR whose fleet host the brain never issued', () async {
+    final appEnrollment = _CountingEnrollmentClient(registration);
+    final controller = WorkerController(
+      credentials: MemoryNodeCredentialStore(),
+      enrollmentClient: appEnrollment,
+      fleetClient: _FakeFleetClient(),
+      jobServer: _FakeWorkerServer(),
+      networkEnrollmentService: ManagedNetworkEnrollmentService(
+        engine: _ReadyNebulaEngine(),
+        client: _IssuingNetworkClient(),
+        store: MemoryManagedNetworkSecretStore(),
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    final result = await controller.pair(
+      _managedDraft(fleet: 'http://192.168.100.9:8082'),
+    );
+
+    expect(result.paired, isFalse);
+    expect(result.error, contains('the brain did not issue'));
+    expect(appEnrollment.calls, 0);
+  });
+
+  test('v2 consumes the token once the fleet host is proven', () async {
+    final appEnrollment = _CountingEnrollmentClient(registration);
+    final controller = WorkerController(
+      credentials: MemoryNodeCredentialStore(),
+      enrollmentClient: appEnrollment,
+      fleetClient: _FakeFleetClient(),
+      jobServer: _FakeWorkerServer(),
+      networkEnrollmentService: ManagedNetworkEnrollmentService(
+        engine: _ReadyNebulaEngine(),
+        client: _IssuingNetworkClient(),
+        store: MemoryManagedNetworkSecretStore(),
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    final result = await controller.pair(
+      _managedDraft(fleet: 'http://192.168.100.1:8082'),
+    );
+
+    expect(result.paired, isTrue);
+    expect(appEnrollment.calls, 1);
+  });
 
   test('re-registers after the brain forgets this worker', () async {
     final fleet = _FakeFleetClient()
@@ -223,6 +261,22 @@ void main() {
     expect(controller.sessionStatus, WorkerSessionStatus.error);
     expect(controller.message, contains('Could not open the Worker listener'));
   });
+}
+
+EnrollmentDraft _managedDraft({required String fleet}) {
+  return EnrollmentDraft.parseUri(
+    Uri(
+      scheme: 'evaluetron-worker',
+      host: 'enroll',
+      queryParameters: {
+        'v': '2',
+        'brain': 'https://brain.example',
+        'fleet': fleet,
+        'token': 'eve_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN',
+        'networkToken': 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN123456',
+      },
+    ).toString(),
+  );
 }
 
 class _FakeEnrollmentClient implements EnrollmentClient {
@@ -324,6 +378,68 @@ class _UnavailableNebulaEngine implements NebulaEngineBoundary {
 
   @override
   Future<void> stop() async {}
+}
+
+class _ReadyNebulaEngine implements NebulaEngineBoundary {
+  bool running = false;
+
+  @override
+  Future<NebulaKeyPair> generateKeyPair() async {
+    return const NebulaKeyPair(
+      publicKeyPem:
+          '-----BEGIN NEBULA X25519 PUBLIC KEY-----\npublic\n-----END NEBULA X25519 PUBLIC KEY-----',
+      privateKeyPem:
+          '-----BEGIN NEBULA X25519 PRIVATE KEY-----\nprivate\n-----END NEBULA X25519 PRIVATE KEY-----',
+    );
+  }
+
+  @override
+  Future<NebulaEngineSupport> inspect() async {
+    return NebulaEngineSupport(
+      platformSupported: true,
+      engineLinked: true,
+      vpnPermissionGranted: true,
+      running: running,
+    );
+  }
+
+  @override
+  Future<VpnConsent> requestVpnConsent() async => VpnConsent.granted;
+
+  @override
+  Future<void> start(ManagedNetworkSecret secret) async {
+    running = true;
+  }
+
+  @override
+  Future<void> stop() async {
+    running = false;
+  }
+}
+
+/// Issues the profile a brain at 192.168.100.1 would sign.
+class _IssuingNetworkClient implements ManagedNetworkEnrollmentClient {
+  @override
+  Future<ManagedNetworkProfile> enroll({
+    required Uri brainBaseUrl,
+    required String oneTimeToken,
+    required String publicKeyPem,
+  }) async {
+    return ManagedNetworkProfile.fromJson({
+      'version': '1.10.3',
+      'caPem':
+          '-----BEGIN NEBULA CERTIFICATE-----\nca\n-----END NEBULA CERTIFICATE-----',
+      'certificatePem':
+          '-----BEGIN NEBULA CERTIFICATE-----\nhost\n-----END NEBULA CERTIFICATE-----',
+      'opaqueConfig': 'pki:\n  ca: /managed/ca.crt\n',
+      'metadata': {
+        'meshName': 'evaluetron',
+        'endpoint': 'vpn.example:4242',
+        'brainIp': '192.168.100.1/24',
+      },
+      'service': {'group': 'worker', 'serviceUrl': 'http://192.168.100.1:8082'},
+    });
+  }
 }
 
 class _NeverNetworkClient implements ManagedNetworkEnrollmentClient {

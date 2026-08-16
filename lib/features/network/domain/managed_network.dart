@@ -36,6 +36,35 @@ class ManagedNetworkMetadata {
   }
 }
 
+/// The brain-issued fleet listener for this node's group.
+///
+/// It is the only fleet address this device may treat as authentic, because a
+/// pairing QR carries its own unverified fleet field.
+class ManagedServiceProfile {
+  const ManagedServiceProfile({required this.group, required this.serviceUrl});
+
+  final String group;
+  final Uri serviceUrl;
+
+  Map<String, Object> toJson() => {
+    'group': group,
+    'serviceUrl': serviceUrl.toString(),
+  };
+
+  factory ManagedServiceProfile.fromJson(Map<String, Object?> json) {
+    final serviceUrl = Uri.tryParse(
+      _requiredString(json, 'serviceUrl', maxLength: 512),
+    );
+    if (serviceUrl == null || !serviceUrl.hasAuthority) {
+      throw const FormatException('Invalid managed network field: serviceUrl.');
+    }
+    return ManagedServiceProfile(
+      group: _requiredString(json, 'group', maxLength: 64),
+      serviceUrl: serviceUrl,
+    );
+  }
+}
+
 class ManagedNetworkProfile {
   const ManagedNetworkProfile({
     required this.version,
@@ -43,6 +72,7 @@ class ManagedNetworkProfile {
     required this.certificatePem,
     required this.opaqueConfig,
     required this.metadata,
+    this.service,
   });
 
   final String version;
@@ -55,8 +85,25 @@ class ManagedNetworkProfile {
   final String opaqueConfig;
   final ManagedNetworkMetadata metadata;
 
+  /// Absent on profiles issued by a host helper older than the listener split.
+  final ManagedServiceProfile? service;
+
   ManagedRoutePolicy get routePolicy =>
       ManagedRoutePolicy.forBrain(metadata.brainIp);
+
+  /// Whether [origin] names the brain that issued this profile.
+  ///
+  /// Pairing carries the fleet origin as an independent field, so it must be
+  /// proven against the address the brain signed for before any credential
+  /// travels to it. Ports are deployment configuration and are not compared.
+  bool authorizesFleetOrigin(Uri origin) {
+    final candidate = InternetAddress.tryParse(origin.host);
+    if (candidate == null || !_isSameAddress(candidate, metadata.brainIp)) {
+      return false;
+    }
+    final issued = service?.serviceUrl.host;
+    return issued == null || _isSameAddress(candidate, issued);
+  }
 
   Map<String, Object> toJson() => {
     'version': version,
@@ -64,6 +111,7 @@ class ManagedNetworkProfile {
     'certificatePem': certificatePem,
     'opaqueConfig': opaqueConfig,
     'metadata': metadata.toJson(),
+    if (service != null) 'service': service!.toJson(),
   };
 
   factory ManagedNetworkProfile.fromJson(Map<String, Object?> json) {
@@ -71,6 +119,7 @@ class ManagedNetworkProfile {
     if (metadata is! Map<Object?, Object?>) {
       throw const FormatException('Managed network metadata is missing.');
     }
+    final service = json['service'];
     final profile = ManagedNetworkProfile(
       version: _requiredString(json, 'version', maxLength: 64),
       caPem: _requiredPem(json, 'caPem', 'NEBULA CERTIFICATE'),
@@ -83,10 +132,25 @@ class ManagedNetworkProfile {
       metadata: ManagedNetworkMetadata.fromJson(
         metadata.cast<String, Object?>(),
       ),
+      service: service is Map<Object?, Object?>
+          ? ManagedServiceProfile.fromJson(service.cast<String, Object?>())
+          : null,
     );
     // Validation is deliberately eager before anything can reach a tunnel.
     profile.routePolicy;
     return profile;
+  }
+
+  static bool _isSameAddress(InternetAddress candidate, String issued) {
+    final address = InternetAddress.tryParse(issued.split('/').first);
+    if (address == null || address.type != candidate.type) return false;
+    final left = address.rawAddress;
+    final right = candidate.rawAddress;
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
   }
 }
 

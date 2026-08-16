@@ -34,6 +34,10 @@ void main() {
               'certificate':
                   '-----BEGIN NEBULA CERTIFICATE-----\nhost\n-----END NEBULA CERTIFICATE-----',
               'config': 'pki:\n  ca: /managed/ca.crt\n',
+              'profile': {
+                'group': 'worker',
+                'serviceUrl': 'http://192.168.100.1:8082',
+              },
               'managed': {
                 'meshName': 'evaluetron',
                 'endpoint': 'vpn.example:4242',
@@ -54,6 +58,15 @@ void main() {
 
     expect(profile.metadata.meshName, 'evaluetron');
     expect(profile.routePolicy.routes, ['192.168.100.1/32']);
+    expect(profile.service?.group, 'worker');
+    expect(
+      profile.authorizesFleetOrigin(Uri.parse('http://192.168.100.1')),
+      isTrue,
+    );
+    expect(
+      profile.authorizesFleetOrigin(Uri.parse('http://192.168.100.9')),
+      isFalse,
+    );
   });
 
   test('rejects public cleartext enrollment before network access', () async {

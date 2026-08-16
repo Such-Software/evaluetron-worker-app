@@ -72,12 +72,15 @@ class HttpManagedNetworkEnrollmentClient
           'Brain returned incomplete managed network metadata.',
         );
       }
+      final service = body['profile'];
       return ManagedNetworkProfile.fromJson({
         'version': body['version'],
         'caPem': body['ca'],
         'certificatePem': body['certificate'],
         'opaqueConfig': body['config'],
         'metadata': managed.cast<String, Object?>(),
+        if (service is Map<Object?, Object?>)
+          'service': service.cast<String, Object?>(),
       });
     } on NetworkEnrollmentException {
       rethrow;
