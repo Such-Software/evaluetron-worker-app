@@ -23,6 +23,20 @@ void main() {
     roles: const ['worker'],
   );
 
+  // The interval never elapses in a test, so beats are driven explicitly.
+  WorkerController sessionController(
+    _FakeFleetClient fleet,
+    _FakeWorkerServer jobServer,
+  ) {
+    return WorkerController(
+      credentials: MemoryNodeCredentialStore(registration),
+      enrollmentClient: _FakeEnrollmentClient(registration),
+      fleetClient: fleet,
+      jobServer: jobServer,
+      heartbeatInterval: const Duration(hours: 1),
+    );
+  }
+
   test(
     'loads securely stored registration and controls explicit sessions',
     () async {
@@ -112,6 +126,87 @@ void main() {
     },
   );
 
+  test('re-registers after the brain forgets this worker', () async {
+    final fleet = _FakeFleetClient()
+      ..heartbeatFailure = const FleetException(
+        'not registered',
+        failure: FleetFailure.unregistered,
+      );
+    final jobServer = _FakeWorkerServer();
+    final controller = sessionController(fleet, jobServer);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.start();
+    expect(fleet.registered, 1);
+
+    await controller.beat();
+    expect(controller.sessionStatus, WorkerSessionStatus.reconnecting);
+    expect(controller.message, contains('brain restarted'));
+    expect(jobServer.endpoint, isNotNull);
+
+    fleet.heartbeatFailure = null;
+    await controller.beat();
+    expect(fleet.registered, 2);
+    expect(controller.sessionStatus, WorkerSessionStatus.running);
+  });
+
+  test('keeps the session open while the brain is unreachable', () async {
+    const unreachable = FleetException(
+      'The brain did not answer this device.',
+      failure: FleetFailure.unavailable,
+    );
+    final fleet = _FakeFleetClient()..heartbeatFailure = unreachable;
+    final jobServer = _FakeWorkerServer();
+    final controller = sessionController(fleet, jobServer);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.start();
+
+    fleet.registerFailure = unreachable;
+    await controller.beat();
+    await controller.beat();
+
+    expect(controller.sessionStatus, WorkerSessionStatus.reconnecting);
+    expect(controller.message, contains('Retrying'));
+    expect(jobServer.endpoint, isNotNull);
+    expect(jobServer.stops, 0);
+    expect(fleet.registered, 2);
+
+    fleet.registerFailure = null;
+    fleet.heartbeatFailure = null;
+    await controller.beat();
+    expect(controller.sessionStatus, WorkerSessionStatus.running);
+    expect(fleet.registered, 3);
+  });
+
+  test('ends the session only when re-registration is refused', () async {
+    final fleet = _FakeFleetClient()
+      ..heartbeatFailure = const FleetException(
+        'unauthorized',
+        failure: FleetFailure.unauthorized,
+      );
+    final jobServer = _FakeWorkerServer();
+    final controller = sessionController(fleet, jobServer);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    await controller.start();
+
+    await controller.beat();
+    expect(controller.sessionStatus, WorkerSessionStatus.reconnecting);
+    expect(jobServer.stops, 0);
+
+    fleet.registerFailure = const FleetException(
+      'unauthorized',
+      failure: FleetFailure.unauthorized,
+    );
+    await controller.beat();
+
+    expect(controller.sessionStatus, WorkerSessionStatus.error);
+    expect(controller.message, contains('Pair this device again'));
+    expect(jobServer.endpoint, isNull);
+    expect(jobServer.stops, 1);
+  });
+
   test('reports a local listener failure without discarding pairing', () async {
     final controller = WorkerController(
       credentials: MemoryNodeCredentialStore(registration),
@@ -153,9 +248,14 @@ class _CountingEnrollmentClient extends _FakeEnrollmentClient {
 
 class _FakeFleetClient implements FleetClient {
   int registered = 0;
+  FleetException? registerFailure;
+  FleetException? heartbeatFailure;
 
   @override
-  Future<void> heartbeat(NodeRegistration registration) async {}
+  Future<void> heartbeat(NodeRegistration registration) async {
+    final failure = heartbeatFailure;
+    if (failure != null) throw failure;
+  }
 
   @override
   Future<void> register(
@@ -163,10 +263,14 @@ class _FakeFleetClient implements FleetClient {
     WorkerAdvertisement advertisement,
   ) async {
     registered++;
+    final failure = registerFailure;
+    if (failure != null) throw failure;
   }
 }
 
 class _FakeWorkerServer implements WorkerServer {
+  int stops = 0;
+
   @override
   Uri? endpoint;
 
@@ -180,6 +284,7 @@ class _FakeWorkerServer implements WorkerServer {
 
   @override
   Future<void> stop() async {
+    stops++;
     endpoint = null;
   }
 }

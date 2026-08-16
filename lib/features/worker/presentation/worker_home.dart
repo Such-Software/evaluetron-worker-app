@@ -208,7 +208,9 @@ class _NodePage extends StatelessWidget {
             )
           else
             _SessionCard(controller: controller),
-          if (controller.sessionStatus == WorkerSessionStatus.error &&
+          if ((controller.sessionStatus == WorkerSessionStatus.error ||
+                  controller.sessionStatus ==
+                      WorkerSessionStatus.reconnecting) &&
               controller.message != null) ...[
             const SizedBox(height: 16),
             Semantics(
@@ -234,8 +236,11 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final running = controller.sessionStatus == WorkerSessionStatus.running;
-    final busy = controller.sessionStatus == WorkerSessionStatus.starting;
+    final status = controller.sessionStatus;
+    final running = status == WorkerSessionStatus.running;
+    final reconnecting = status == WorkerSessionStatus.reconnecting;
+    final busy = status == WorkerSessionStatus.starting;
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -243,14 +248,24 @@ class _SessionCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
-              running ? Icons.radio_button_checked : Icons.pause_circle_outline,
+              running
+                  ? Icons.radio_button_checked
+                  : reconnecting
+                  ? Icons.sync_problem
+                  : Icons.pause_circle_outline,
               size: 44,
-              color: running ? Theme.of(context).colorScheme.primary : null,
+              color: running
+                  ? scheme.primary
+                  : reconnecting
+                  ? scheme.tertiary
+                  : null,
             ),
             const SizedBox(height: 16),
             Text(
               running
                   ? 'Online'
+                  : reconnecting
+                  ? 'Reconnecting…'
                   : busy
                   ? 'Connecting…'
                   : 'Offline',
@@ -260,6 +275,8 @@ class _SessionCard extends StatelessWidget {
             Text(
               running
                   ? 'Connected to the Brain.'
+                  : reconnecting
+                  ? 'The session stays open while this device retries the Brain.'
                   : 'Start when this device should accept work.',
             ),
             const SizedBox(height: 20),
@@ -267,7 +284,7 @@ class _SessionCard extends StatelessWidget {
               spacing: 12,
               runSpacing: 12,
               children: [
-                if (running)
+                if (running || reconnecting)
                   OutlinedButton.icon(
                     key: const Key('stop-session'),
                     onPressed: controller.stop,
@@ -448,6 +465,10 @@ class _ConnectionBadge extends StatelessWidget {
       ),
       WorkerSessionStatus.starting => (
         'Starting',
+        Theme.of(context).colorScheme.tertiary,
+      ),
+      WorkerSessionStatus.reconnecting => (
+        'Reconnecting',
         Theme.of(context).colorScheme.tertiary,
       ),
       WorkerSessionStatus.error => (

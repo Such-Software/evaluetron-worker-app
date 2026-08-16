@@ -13,7 +13,7 @@ import '../data/fleet_client.dart';
 import '../data/worker_job_server.dart';
 import '../domain/capability_policy.dart';
 
-enum WorkerSessionStatus { stopped, starting, running, error }
+enum WorkerSessionStatus { stopped, starting, running, reconnecting, error }
 
 class WorkerController extends ChangeNotifier {
   WorkerController({
@@ -22,17 +22,25 @@ class WorkerController extends ChangeNotifier {
     required FleetClient fleetClient,
     required WorkerServer jobServer,
     ManagedNetworkEnrollmentService? networkEnrollmentService,
+    Duration heartbeatInterval = const Duration(seconds: 20),
   }) : _credentials = credentials,
        _enrollmentClient = enrollmentClient,
        _fleetClient = fleetClient,
        _jobServer = jobServer,
-       _networkEnrollmentService = networkEnrollmentService;
+       _networkEnrollmentService = networkEnrollmentService,
+       _heartbeatInterval = heartbeatInterval;
+
+  /// Retries double the beat interval up to this ceiling, so an unreachable
+  /// brain costs a phone little while the session stays open.
+  static const _maxRetryDelay = Duration(minutes: 5);
+  static const _maxBackoffSteps = 4;
 
   final NodeCredentialStore _credentials;
   final EnrollmentClient _enrollmentClient;
   final FleetClient _fleetClient;
   final WorkerServer _jobServer;
   final ManagedNetworkEnrollmentService? _networkEnrollmentService;
+  final Duration _heartbeatInterval;
 
   NodeRegistration? registration;
   WorkerSessionStatus sessionStatus = WorkerSessionStatus.stopped;
@@ -40,10 +48,22 @@ class WorkerController extends ChangeNotifier {
   String? message;
   bool loading = true;
   Timer? _heartbeat;
+  bool _registered = false;
+  int _retries = 0;
 
   CapabilityPolicy get policy => track == DistributionTrack.fullNode
       ? CapabilityPolicy.fullNode
       : CapabilityPolicy.storeSafe;
+
+  /// A session the user has not stopped, whether or not the brain answers.
+  bool get _sessionLive =>
+      sessionStatus == WorkerSessionStatus.starting ||
+      sessionStatus == WorkerSessionStatus.running ||
+      sessionStatus == WorkerSessionStatus.reconnecting;
+
+  String get _connectedMessage => _jobServer.runtime.ready
+      ? 'Connected and ready to accept authenticated jobs.'
+      : 'Connected. No model runtime is installed, so this node advertises no generators.';
 
   Future<void> initialize() async {
     try {
@@ -106,28 +126,18 @@ class WorkerController extends ChangeNotifier {
 
   Future<void> start() async {
     final current = registration;
-    if (current == null || sessionStatus == WorkerSessionStatus.running) return;
+    if (current == null || _sessionLive) return;
     sessionStatus = WorkerSessionStatus.starting;
     message = null;
     notifyListeners();
     try {
       await _jobServer.start(current);
-      final endpoint = _jobServer.endpoint;
-      if (endpoint == null) {
-        throw const FleetException('Worker job server did not start.');
-      }
-      await _fleetClient.register(
-        current,
-        WorkerAdvertisement(endpoint: endpoint, runtime: _jobServer.runtime),
-      );
+      await _register(current);
+      _registered = true;
+      _retries = 0;
       sessionStatus = WorkerSessionStatus.running;
-      message = _jobServer.runtime.ready
-          ? 'Connected and ready to accept authenticated jobs.'
-          : 'Connected. No model runtime is installed, so this node advertises no generators.';
-      _heartbeat?.cancel();
-      _heartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
-        _sendHeartbeat(current);
-      });
+      message = _connectedMessage;
+      _scheduleBeat();
     } on FleetException catch (error) {
       await _jobServer.stop();
       sessionStatus = WorkerSessionStatus.error;
@@ -145,26 +155,101 @@ class WorkerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _sendHeartbeat(NodeRegistration current) async {
+  /// Runs one register-or-heartbeat cycle.
+  ///
+  /// The brain keeps its worker registry in process, so it answers 404 to a
+  /// heartbeat after every restart and expects a fresh registration; a phone
+  /// also loses its link routinely. Both keep the session and retry, and only
+  /// a credential the brain refuses outright ends it.
+  @visibleForTesting
+  Future<void> beat() async {
+    final current = registration;
+    if (current == null || !_sessionLive) return;
+    final registered = _registered;
     try {
-      await _fleetClient.heartbeat(current);
+      if (registered) {
+        await _fleetClient.heartbeat(current);
+      } else {
+        await _register(current);
+      }
+      _registered = true;
+      _retries = 0;
+      _update(WorkerSessionStatus.running, _connectedMessage);
+    } on FleetException catch (error) {
+      if (!registered && error.failure == FleetFailure.unauthorized) {
+        await _endSession(
+          WorkerSessionStatus.error,
+          'The brain refused this node credential. Pair this device again.',
+        );
+        return;
+      }
+      final forgotten =
+          registered && error.failure == FleetFailure.unregistered;
+      _retry(
+        forgotten
+            ? 'The brain restarted. Re-registering this node.'
+            : 'Lost contact with the brain. Retrying without ending the session.',
+        immediate: forgotten,
+      );
     } on Object {
-      sessionStatus = WorkerSessionStatus.error;
-      message =
-          'Heartbeat failed. Stop and restart when the brain is reachable.';
-      _heartbeat?.cancel();
-      _heartbeat = null;
-      await _jobServer.stop();
-      notifyListeners();
+      _retry(
+        'Lost contact with the brain. Retrying without ending the session.',
+      );
     }
+    _scheduleBeat();
   }
 
-  Future<void> stop() async {
+  Future<void> stop() {
+    return _endSession(
+      WorkerSessionStatus.stopped,
+      'Worker session stopped on this device.',
+    );
+  }
+
+  Future<void> _register(NodeRegistration current) async {
+    final endpoint = _jobServer.endpoint;
+    if (endpoint == null) {
+      throw const FleetException('Worker job server did not start.');
+    }
+    await _fleetClient.register(
+      current,
+      WorkerAdvertisement(endpoint: endpoint, runtime: _jobServer.runtime),
+    );
+  }
+
+  void _retry(String text, {bool immediate = false}) {
+    _registered = false;
+    _retries = immediate ? 0 : _retries + 1;
+    _update(WorkerSessionStatus.reconnecting, text);
+  }
+
+  void _scheduleBeat() {
     _heartbeat?.cancel();
     _heartbeat = null;
+    if (!_sessionLive) return;
+    final steps = _retries > _maxBackoffSteps ? _maxBackoffSteps : _retries;
+    final delay = _heartbeatInterval * (1 << steps);
+    _heartbeat = Timer(
+      delay > _maxRetryDelay ? _maxRetryDelay : delay,
+      () => unawaited(beat()),
+    );
+  }
+
+  void _update(WorkerSessionStatus status, String text) {
+    if (sessionStatus == status && message == text) return;
+    sessionStatus = status;
+    message = text;
+    notifyListeners();
+  }
+
+  Future<void> _endSession(WorkerSessionStatus status, String text) async {
+    _heartbeat?.cancel();
+    _heartbeat = null;
+    _registered = false;
+    _retries = 0;
     await _jobServer.stop();
-    sessionStatus = WorkerSessionStatus.stopped;
-    message = 'Worker session stopped on this device.';
+    sessionStatus = status;
+    message = text;
     notifyListeners();
   }
 
