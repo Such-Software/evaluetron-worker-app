@@ -83,6 +83,30 @@ Policy references:
 - [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
 - [Flutter supported deployment platforms](https://docs.flutter.dev/reference/supported-platforms)
 
+## Android release signing
+
+A release build is signed only with an operator-supplied key. Create `android/key.properties`, which
+is gitignored and must never be committed:
+
+```properties
+storePassword=<keystore password>
+keyPassword=<key password>
+keyAlias=<key alias>
+storeFile=/absolute/path/to/evaluetron-worker-upload.jks
+```
+
+Generate the keystore outside this repository:
+
+```sh
+keytool -genkey -v -keystore ~/keys/evaluetron-worker-upload.jks \
+  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+```
+
+`storeFile` resolves relative to `android/app`, so use an absolute path. Without `key.properties`
+the release build is **unsigned** and Gradle warns during the build. It is never signed with the
+debug key, so a debug-signed artifact cannot ship by accident; sign an unsigned artifact with
+`apksigner`, or add the properties file and rebuild.
+
 ## Development
 
 ```sh
