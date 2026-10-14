@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 import '../features/network/presentation/managed_network_controller.dart';
+import '../features/worker/presentation/runtime_controller.dart';
 import '../features/worker/presentation/worker_controller.dart';
 import '../features/worker/presentation/worker_home.dart';
 
@@ -9,11 +10,13 @@ class WorkerApp extends StatefulWidget {
   const WorkerApp({
     required this.controller,
     required this.networkController,
+    required this.runtimeController,
     super.key,
   });
 
   final WorkerController controller;
   final ManagedNetworkController networkController;
+  final RuntimeController runtimeController;
 
   @override
   State<WorkerApp> createState() => _WorkerAppState();
@@ -31,6 +34,7 @@ class _WorkerAppState extends State<WorkerApp> {
   void dispose() {
     widget.controller.dispose();
     widget.networkController.dispose();
+    widget.runtimeController.dispose();
     super.dispose();
   }
 
@@ -45,6 +49,7 @@ class _WorkerAppState extends State<WorkerApp> {
       home: WorkerHome(
         controller: widget.controller,
         networkController: widget.networkController,
+        runtimeController: widget.runtimeController,
       ),
     );
   }

@@ -13,6 +13,15 @@ abstract interface class WorkerServer {
   Uri? get endpoint;
   RuntimeDescriptor get runtime;
 
+  /// Re-ask the runtime what it can execute, and report what it said.
+  ///
+  /// Called immediately before every registration, so what the brain is told
+  /// about this node is never older than the last time it was told anything. A
+  /// model server that has stopped, or a model that has been deleted, therefore
+  /// costs at most one dispatch rather than every dispatch until the session is
+  /// restarted by hand.
+  Future<RuntimeDescriptor> probeRuntime();
+
   Future<void> start(NodeRegistration registration);
   Future<void> stop();
 }
@@ -40,6 +49,9 @@ class HttpWorkerJobServer implements WorkerServer {
 
   @override
   RuntimeDescriptor get runtime => _adapter.descriptor;
+
+  @override
+  Future<RuntimeDescriptor> probeRuntime() => _adapter.probe();
 
   /// The single interface this listener accepts connections on.
   @visibleForTesting

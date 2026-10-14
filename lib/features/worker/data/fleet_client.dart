@@ -48,6 +48,7 @@ class HttpFleetClient implements FleetClient {
   HttpFleetClient({HttpClient? client}) : _client = client ?? HttpClient();
 
   static const _timeout = Duration(seconds: 15);
+  static const _maxResponseBytes = 65536;
   final HttpClient _client;
 
   @override
@@ -87,14 +88,13 @@ class HttpFleetClient implements FleetClient {
     final ({int status, String body}) answer;
     try {
       answer = await _exchange(registration, path, payload);
+    } on FleetException {
+      rethrow;
     } on Object {
       throw const FleetException(
         'The brain did not answer this device.',
         failure: FleetFailure.unavailable,
       );
-    }
-    if (answer.body.length > 65536) {
-      throw const FleetException('Brain returned an oversized response.');
     }
     if (answer.status < 200 || answer.status >= 300) {
       var message = 'Brain rejected the worker session.';
@@ -128,10 +128,22 @@ class HttpFleetClient implements FleetClient {
       ..headers.contentLength = encoded.length
       ..add(encoded);
     final response = await request.close().timeout(_timeout);
-    return (
-      status: response.statusCode,
-      body: await utf8.decoder.bind(response).join().timeout(_timeout),
-    );
+    final body = await _boundedBody(response);
+    return (status: response.statusCode, body: body);
+  }
+
+  static Future<String> _boundedBody(HttpClientResponse response) async {
+    if (response.contentLength > _maxResponseBytes) {
+      throw const FleetException('Brain returned an oversized response.');
+    }
+    final bytes = <int>[];
+    await for (final chunk in response.timeout(_timeout)) {
+      if (bytes.length + chunk.length > _maxResponseBytes) {
+        throw const FleetException('Brain returned an oversized response.');
+      }
+      bytes.addAll(chunk);
+    }
+    return utf8.decode(bytes);
   }
 
   /// The brain answers 404 to a heartbeat for a worker it no longer holds, and

@@ -5,17 +5,21 @@ import '../../network/presentation/managed_network_controller.dart';
 import '../../network/presentation/managed_network_page.dart';
 import '../../pairing/presentation/pair_node_dialog.dart';
 import '../domain/capability_policy.dart';
+import 'runtime_controller.dart';
+import 'runtime_page.dart';
 import 'worker_controller.dart';
 
 class WorkerHome extends StatefulWidget {
   const WorkerHome({
     required this.controller,
     required this.networkController,
+    required this.runtimeController,
     super.key,
   });
 
   final WorkerController controller;
   final ManagedNetworkController networkController;
+  final RuntimeController runtimeController;
 
   @override
   State<WorkerHome> createState() => _WorkerHomeState();
@@ -77,6 +81,11 @@ class _WorkerHomeState extends State<WorkerHome> {
                             label: Text('Worker'),
                           ),
                           NavigationRailDestination(
+                            icon: Icon(Icons.memory_outlined),
+                            selectedIcon: Icon(Icons.memory),
+                            label: Text('Runtime'),
+                          ),
+                          NavigationRailDestination(
                             icon: Icon(Icons.vpn_lock_outlined),
                             selectedIcon: Icon(Icons.vpn_lock),
                             label: Text('Network'),
@@ -112,6 +121,11 @@ class _WorkerHomeState extends State<WorkerHome> {
                           label: 'Worker',
                         ),
                         NavigationDestination(
+                          icon: Icon(Icons.memory_outlined),
+                          selectedIcon: Icon(Icons.memory),
+                          label: 'Runtime',
+                        ),
+                        NavigationDestination(
                           icon: Icon(Icons.vpn_lock_outlined),
                           selectedIcon: Icon(Icons.vpn_lock),
                           label: 'Network',
@@ -134,7 +148,8 @@ class _WorkerHomeState extends State<WorkerHome> {
 
   Widget _pageForIndex() => switch (_selectedIndex) {
     0 => _NodePage(controller: widget.controller),
-    1 => ManagedNetworkPage(controller: widget.networkController),
+    1 => RuntimePage(controller: widget.runtimeController),
+    2 => ManagedNetworkPage(controller: widget.networkController),
     _ => _MorePage(controller: widget.controller),
   };
 }

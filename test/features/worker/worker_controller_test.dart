@@ -165,6 +165,120 @@ void main() {
     expect(appEnrollment.calls, 1);
   });
 
+  test('proves the runtime before telling the brain what this node serves', () async {
+    // Probed at registration rather than once at start-up, because registration
+    // runs again after every reconnect and every brain restart. A model server
+    // that stopped, or a model deleted while the session was open, is therefore
+    // withdrawn at the next beat instead of taking jobs it can no longer serve.
+    final fleet = _FakeFleetClient();
+    final jobServer = _FakeWorkerServer()
+      ..probed = RuntimeDescriptor.serving(
+        models: {
+          'llm': ['qwen3:8b'],
+        },
+        methods: {
+          'llm': ['ollama'],
+        },
+      );
+    final controller = sessionController(fleet, jobServer);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    await controller.start();
+
+    expect(jobServer.probes, 1);
+    expect(fleet.advertised.single.models['llm'], ['qwen3:8b']);
+  });
+
+  test(
+    'withdraws a runtime that has gone away, at the next registration',
+    () async {
+      final fleet = _FakeFleetClient()
+        ..heartbeatFailure = const FleetException(
+          'not registered',
+          failure: FleetFailure.unregistered,
+        );
+      final jobServer = _FakeWorkerServer()
+        ..probed = RuntimeDescriptor.serving(
+          models: {
+            'llm': ['qwen3:8b'],
+          },
+          methods: {
+            'llm': ['ollama'],
+          },
+        );
+      final controller = sessionController(fleet, jobServer);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.start();
+      expect(fleet.advertised.single.ready, isTrue);
+
+      // One beat to discover the brain has forgotten this node, a second to
+      // re-register — which is the moment the withdrawn runtime is reported.
+      await controller.beat();
+      expect(controller.sessionStatus, WorkerSessionStatus.reconnecting);
+      // The runtime disappears before the reconnect registration.
+      jobServer.probed = RuntimeDescriptor.unavailable;
+      fleet.heartbeatFailure = null;
+      await controller.beat();
+
+      expect(fleet.registered, 2);
+      expect(fleet.advertised.last.ready, isFalse);
+      expect(fleet.advertised.last.generators, isEmpty);
+    },
+  );
+
+  test(
+    'withdraws a lost model on a healthy heartbeat and republishes recovery',
+    () async {
+      final fleet = _FakeFleetClient();
+      final jobServer = _FakeWorkerServer()
+        ..probed = RuntimeDescriptor.serving(
+          models: {
+            'llm': ['first'],
+          },
+          methods: {},
+        );
+      final controller = sessionController(fleet, jobServer);
+      addTearDown(controller.dispose);
+      await controller.initialize();
+      await controller.start();
+      await controller.beat();
+      expect(fleet.advertised.last.ready, isTrue);
+
+      jobServer.probed = RuntimeDescriptor.unavailable;
+      await controller.beat();
+      expect(controller.sessionStatus, WorkerSessionStatus.running);
+      expect(fleet.advertised.last.ready, isFalse);
+
+      jobServer.probed = RuntimeDescriptor.serving(
+        models: {
+          'llm': ['second'],
+        },
+        methods: {},
+      );
+      await controller.beat();
+      expect(fleet.advertised.last.models['llm'], contains('second'));
+      expect(controller.sessionStatus, WorkerSessionStatus.running);
+    },
+  );
+
+  test('still registers a node whose runtime never answered', () async {
+    // A node that serves no generators is still worth registering: it is
+    // reachable, it may be carrying sensors, and the brain simply routes
+    // generation elsewhere.
+    final fleet = _FakeFleetClient();
+    final controller = sessionController(fleet, _FakeWorkerServer());
+    addTearDown(controller.dispose);
+    await controller.initialize();
+
+    await controller.start();
+
+    expect(fleet.registered, 1);
+    expect(fleet.advertised.single.ready, isFalse);
+    expect(controller.sessionStatus, WorkerSessionStatus.running);
+  });
+
   test('re-registers after the brain forgets this worker', () async {
     final fleet = _FakeFleetClient()
       ..heartbeatFailure = const FleetException(
@@ -320,6 +434,7 @@ class _CountingEnrollmentClient extends _FakeEnrollmentClient {
 
 class _FakeFleetClient implements FleetClient {
   int registered = 0;
+  final advertised = <RuntimeDescriptor>[];
   FleetException? registerFailure;
   FleetException? heartbeatFailure;
   Completer<void>? heartbeatGate;
@@ -338,6 +453,7 @@ class _FakeFleetClient implements FleetClient {
     WorkerAdvertisement advertisement,
   ) async {
     registered++;
+    advertised.add(advertisement.runtime);
     final failure = registerFailure;
     if (failure != null) throw failure;
   }
@@ -345,12 +461,20 @@ class _FakeFleetClient implements FleetClient {
 
 class _FakeWorkerServer implements WorkerServer {
   int stops = 0;
+  int probes = 0;
+  RuntimeDescriptor probed = RuntimeDescriptor.unavailable;
 
   @override
   Uri? endpoint;
 
   @override
-  RuntimeDescriptor get runtime => RuntimeDescriptor.unavailable;
+  RuntimeDescriptor get runtime => probed;
+
+  @override
+  Future<RuntimeDescriptor> probeRuntime() async {
+    probes++;
+    return probed;
+  }
 
   @override
   Future<void> start(NodeRegistration registration) async {
