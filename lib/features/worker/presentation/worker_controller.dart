@@ -12,6 +12,7 @@ import '../../pairing/domain/pairing_result.dart';
 import '../data/fleet_client.dart';
 import '../data/worker_job_server.dart';
 import '../domain/capability_policy.dart';
+import '../domain/runtime_adapter.dart';
 
 enum WorkerSessionStatus { stopped, starting, running, reconnecting, error }
 
@@ -49,6 +50,7 @@ class WorkerController extends ChangeNotifier {
   bool loading = true;
   Timer? _heartbeat;
   bool _registered = false;
+  RuntimeDescriptor? _advertisedRuntime;
   int _retries = 0;
 
   CapabilityPolicy get policy => track == DistributionTrack.fullNode
@@ -202,10 +204,12 @@ class WorkerController extends ChangeNotifier {
     required bool registered,
   }) async {
     try {
-      if (registered) {
+      final runtime = await _jobServer.probeRuntime();
+      if (!_sessionLive) return null;
+      if (registered && _sameCapabilities(runtime, _advertisedRuntime)) {
         await _fleetClient.heartbeat(current);
       } else {
-        await _register(current);
+        await _register(current, runtime: runtime);
       }
       return null;
     } on FleetException catch (error) {
@@ -222,15 +226,43 @@ class WorkerController extends ChangeNotifier {
     );
   }
 
-  Future<void> _register(NodeRegistration current) async {
+  Future<void> _register(
+    NodeRegistration current, {
+    RuntimeDescriptor? runtime,
+  }) async {
     final endpoint = _jobServer.endpoint;
     if (endpoint == null) {
       throw const FleetException('Worker job server did not start.');
     }
+    // Probed here rather than once at start-up, because this runs again after
+    // every reconnect and every brain restart. A model server that has stopped,
+    // or a model deleted while the session was open, is therefore withdrawn from
+    // the fleet at the next beat instead of taking jobs it can no longer serve.
+    // The probe does not throw: an unreachable runtime advertises nothing, and
+    // registering a node that serves nothing is still worth doing, because the
+    // node is reachable and may be carrying sensors.
+    final verified = runtime ?? await _jobServer.probeRuntime();
     await _fleetClient.register(
       current,
-      WorkerAdvertisement(endpoint: endpoint, runtime: _jobServer.runtime),
+      WorkerAdvertisement(endpoint: endpoint, runtime: verified),
     );
+    _advertisedRuntime = verified;
+  }
+
+  static bool _sameCapabilities(
+    RuntimeDescriptor current,
+    RuntimeDescriptor? advertised,
+  ) {
+    if (advertised == null ||
+        current.ready != advertised.ready ||
+        !listEquals(current.generators, advertised.generators)) {
+      return false;
+    }
+    bool sameModels(Map<String, List<String>> a, Map<String, List<String>> b) =>
+        a.length == b.length &&
+        a.entries.every((entry) => listEquals(entry.value, b[entry.key]));
+    return sameModels(current.models, advertised.models) &&
+        sameModels(current.methods, advertised.methods);
   }
 
   void _retry(String text, {bool immediate = false}) {
@@ -263,6 +295,7 @@ class WorkerController extends ChangeNotifier {
     _heartbeat = null;
     _registered = false;
     _retries = 0;
+    _advertisedRuntime = null;
     // Settled before the listener closes, so a beat awaiting the brain sees a
     // dead session the moment it resumes.
     sessionStatus = status;

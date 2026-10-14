@@ -21,10 +21,33 @@ project shells exist so store and desktop work can proceed without splitting the
   from the paired brain.
 - Shows node identity, roles, connection state, distribution policy, and verified runtime capability.
 - Uses bottom navigation on phones and a navigation rail for keyboard/mouse desktop layouts.
+- Serves `llm` text generation from a model server on the device or its private network.
 
-It does **not** execute inference yet. Registration advertises an empty generator list and
-`runtimeReady: false`; the UI says the model adapter is not installed. A runtime adapter must not
-advertise a generator until a local health probe proves that it can execute it.
+## Serving generation
+
+The **Runtime** screen points this node at an OpenAI-compatible model server —
+`llama-server`, Ollama, vLLM, or LM Studio — running on the device itself or on its private
+network. Once one answers, the node advertises `llm` to its brain and accepts authenticated
+dispatches for it like any other fleet worker.
+
+A runtime address is accepted only on loopback or a private network. A "local model" reachable
+across the internet is not a local model, and forwarding every question a customer asks to an
+arbitrary host is the privacy position this service sells against.
+
+Nothing is ever advertised on trust. `WorkerRuntimeAdapter.probe()` asks the server what it serves
+and the node advertises `llm` only if the configured model is in that list — reachability is not
+readiness, and a server that never pulled the model would take every job and fail it. A ready
+descriptor must also carry at least one model per generator, which the type enforces: the brain's
+router selects by advertised generator *and* model, so a generator with no model under it registers
+a healthy-looking node that every job routes past. The probe runs again before every registration,
+so a model server that stops, or a model deleted mid-session, is withdrawn at the next beat.
+
+A node with no runtime configured is still a full fleet member. It advertises no generators, the
+brain routes generation elsewhere, and it can still carry sensors — which is the right shape for
+most phones.
+
+In-process inference — llama.cpp over FFI — is a second implementation of `WorkerRuntimeAdapter`
+rather than a rewrite of the first. That is what the seam is for.
 
 ## Managed private network
 

@@ -8,8 +8,10 @@ import 'package:evaluetron_worker_app/features/pairing/data/secure_node_credenti
 import 'package:evaluetron_worker_app/features/pairing/domain/enrollment.dart';
 import 'package:evaluetron_worker_app/features/pairing/domain/node_registration.dart';
 import 'package:evaluetron_worker_app/features/worker/data/fleet_client.dart';
+import 'package:evaluetron_worker_app/features/worker/data/runtime_settings_store.dart';
 import 'package:evaluetron_worker_app/features/worker/data/worker_job_server.dart';
 import 'package:evaluetron_worker_app/features/worker/domain/runtime_adapter.dart';
+import 'package:evaluetron_worker_app/features/worker/presentation/runtime_controller.dart';
 import 'package:evaluetron_worker_app/features/worker/presentation/worker_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +29,7 @@ void main() {
       WorkerApp(
         controller: controller,
         networkController: _networkController(),
+        runtimeController: _runtimeController(),
       ),
     );
     await tester.pumpAndSettle();
@@ -72,6 +75,7 @@ void main() {
         WorkerApp(
           controller: controller,
           networkController: _networkController(),
+          runtimeController: _runtimeController(),
         ),
       );
       await tester.pumpAndSettle();
@@ -105,6 +109,10 @@ void main() {
       );
     },
   );
+}
+
+RuntimeController _runtimeController() {
+  return RuntimeController(store: MemoryRuntimeSettingsStore());
 }
 
 ManagedNetworkController _networkController() {
@@ -162,6 +170,10 @@ class _FakeWorkerServer implements WorkerServer {
 
   @override
   RuntimeDescriptor get runtime => RuntimeDescriptor.unavailable;
+
+  @override
+  Future<RuntimeDescriptor> probeRuntime() async =>
+      RuntimeDescriptor.unavailable;
 
   @override
   Future<void> start(NodeRegistration registration) async {

@@ -27,7 +27,7 @@ class CapabilityPolicy {
       'Foreground sensor participation with explicit permission',
     ],
     restrictions: [
-      'This scaffold does not include a model runtime adapter yet.',
+      'A model runtime is served over HTTP; in-process inference is not linked yet.',
       'Background survival depends on the operating system.',
       'Models and runtime artifacts must be signed and verified.',
     ],

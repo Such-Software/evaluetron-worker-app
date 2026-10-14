@@ -120,6 +120,9 @@ class _EchoRuntime implements WorkerRuntimeAdapter {
   );
 
   @override
+  Future<RuntimeDescriptor> probe() async => descriptor;
+
+  @override
   Future<RuntimeArtifact> run(
     String generator,
     Map<String, Object?> parameters,
